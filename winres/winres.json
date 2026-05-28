@@ -1,0 +1,30 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "id": 1
+    }
+  },
+  "RT_MANIFEST": {
+    "1": {
+      "requested-execution-level": "asInvoker",
+      "dpi-awareness": ["systemV2", "perMonitorV2"],
+      "description": "Password Manager - 安全密码管理工具"
+    }
+  },
+  "RT_VERSION": {
+    "1": {
+      "fixed": {
+        "file_version": "1.0.0.0",
+        "product_version": "1.0.0.0"
+      },
+      "info": {
+        "CompanyName": "个人开发",
+        "FileDescription": "密码管理器",
+        "FileVersion": "1.0.0",
+        "OriginalFilename": "PasswordManager.exe",
+        "ProductName": "密码管理器",
+        "ProductVersion": "1.0.0"
+      }
+    }
+  }
+}

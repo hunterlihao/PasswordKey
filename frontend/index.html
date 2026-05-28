@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>密码管理器</title>
+    <style>html,body{margin:0;padding:0;background:#f5f0e8;overflow:hidden}</style>
+</head>
+<body>
+<div id="splash">
+    <div class="splash-inner">
+        <div class="vault-ring vault-ring-1"></div>
+        <div class="vault-ring vault-ring-2"></div>
+        <div class="vault-ring vault-ring-3"></div>
+        <svg class="lock-svg" viewBox="0 0 64 64" fill="none">
+            <path class="lock-shackle" d="M22 28V20C22 13.4 27.4 8 34 8H30C36.6 8 42 13.4 42 20V28"
+                  stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+            <rect class="lock-body" x="16" y="28" width="32" height="26" rx="4"
+                  stroke="currentColor" stroke-width="3" fill="none"/>
+            <circle class="lock-hole" cx="32" cy="40" r="4"
+                    stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <line class="lock-keyway" x1="32" y1="44" x2="32" y2="48"
+                  stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <div class="splash-text">
+            <span class="splash-title">VAULT</span>
+            <span class="splash-sub">正在初始化安全环境...</span>
+        </div>
+    </div>
+</div>
+<div id="app"></div>
+<script src="./src/main.js" type="module"></script>
+</body>
+</html>
