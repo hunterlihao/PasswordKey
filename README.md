@@ -12,6 +12,7 @@
 - 批量选择与删除
 - JSON / Excel 导入导出（含模板下载）
 - 修改主密钥（自动重新加密所有凭证）
+- 自定义数据库存储路径（设置中可更改）
 
 ## 技术栈
 
@@ -68,6 +69,8 @@ password/
 │   │   └── model.go                # 数据结构定义
 │   ├── store/
 │   │   └── store.go                # SQLite CRUD 操作
+│   ├── settings/
+│   │   └── settings.go             # 配置文件读写
 │   └── export/
 │       └── export.go               # JSON/Excel 导入导出
 ├── frontend/
