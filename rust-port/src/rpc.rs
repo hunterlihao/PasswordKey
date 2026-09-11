@@ -195,7 +195,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("pm-rpc-test-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let db_path: PathBuf = dir.join("vault.json");
+        let db_path: PathBuf = dir.join("data.db");
         let store = Store::open(&db_path).unwrap();
         App::for_test(store, Settings::default(), dir, db_path)
     }
@@ -305,7 +305,7 @@ mod tests {
     fn db_path_roundtrip() {
         let mut app = temp_app("dbpath");
         let path = call(&mut app, "GetDbPath", json!([])).unwrap();
-        assert!(path.as_str().unwrap().ends_with("vault.json"));
+        assert!(path.as_str().unwrap().ends_with("data.db"));
         // 已经是默认路径
         assert_eq!(call(&mut app, "ResetDbPath", json!([])).unwrap_err(), "已经是默认路径");
     }

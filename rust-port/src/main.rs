@@ -5,7 +5,7 @@
 //! - 前端：Vite 构建后内联成单文件 HTML，编译期嵌入 exe（`assets/app.html`）
 //! - 通信：WebView2 原生 IPC（`window.ipc.postMessage`），
 //!   注入 `window.go.main.App.*` 后前端代码无需任何改动
-//! - 数据：便携目录下的 JSON 文件（`data/vault.json`）+ `settings.json`
+//! - 数据：便携目录下的 SQLite（`data/data.db`）+ `settings.json`
 
 // release 构建用 windows 子系统，避免双击 exe 时弹出控制台窗口；
 // debug 构建保留控制台，方便看 println! / eprintln! 输出。
