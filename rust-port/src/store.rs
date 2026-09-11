@@ -1,64 +1,23 @@
-//! SQLite 存储层（对应 Go 的 internal/store/store.go）。
+//! JSON 文件存储层。
 //!
-//! 表结构与 Go 版完全一致，因此可以直接打开旧版 `data.db`。
+//! 全部数据（主密钥配置、凭证列表、解锁失败状态、自增 ID）序列化到
+//! 便携目录下的单个 `vault.json`。所有读写在内存里完成，写盘采用
+//! 原子写（先写 `.tmp` 再 rename）保证崩溃时不损坏已有数据。
+//!
+//! 密文以 base64 编码存储，避免非 UTF-8 字节破坏 JSON。
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use chrono::{DateTime, Local};
-use rusqlite::types::ToSql;
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Transaction};
+use serde::{Deserialize, Serialize};
 
 use crate::model::{Credential, MasterConfig};
 use crate::timefmt::{lock_stamp, now_text, parse_lock_stamp, to_rfc3339};
 
-const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS master_config (
-    id              INTEGER PRIMARY KEY CHECK (id = 1),
-    salt            BLOB NOT NULL,
-    encrypted_verify BLOB NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS credentials (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL,
-    type        INTEGER NOT NULL DEFAULT 0,
-    url         TEXT NOT NULL DEFAULT '',
-    username    TEXT NOT NULL DEFAULT '',
-    secret      BLOB NOT NULL,
-    notes       TEXT NOT NULL DEFAULT '',
-    is_favorite INTEGER NOT NULL DEFAULT 0,
-    created_at  DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
-    updated_at  DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
-);
-
-CREATE TABLE IF NOT EXISTS app_state (
-    id            INTEGER PRIMARY KEY CHECK (id = 1),
-    fail_count    INTEGER NOT NULL DEFAULT 0,
-    locked_until  TEXT NOT NULL DEFAULT ''
-);
-
-CREATE INDEX IF NOT EXISTS idx_credentials_type ON credentials(type);
-CREATE INDEX IF NOT EXISTS idx_credentials_name ON credentials(name);
-CREATE INDEX IF NOT EXISTS idx_credentials_favorite ON credentials(is_favorite);
-"#;
-
-const SELECT_COLUMNS: &str = "id, name, type, url, username, secret, notes, is_favorite, created_at, updated_at";
-
-/// 转义 SQL LIKE 中的通配符（% _ \），配合 ESCAPE '\' 使用
-pub fn escape_like(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for ch in input.chars() {
-        match ch {
-            '\\' | '%' | '_' => {
-                out.push('\\');
-                out.push(ch);
-            }
-            _ => out.push(ch),
-        }
-    }
-    out
-}
+/// 文件格式版本（破坏性改动时递增，便于未来迁移）
+const VAULT_VERSION: u32 = 1;
 
 /// 持久化的暴力破解防护状态
 #[derive(Debug, Clone, Default)]
@@ -67,87 +26,200 @@ pub struct UnlockState {
     pub locked_until: Option<DateTime<Local>>,
 }
 
+// ===== 内部存储结构（仅 JSON 序列化用，不暴露到 crate 外） =====
+
+#[derive(Default, Serialize, Deserialize, Debug)]
+struct VaultFile {
+    /// 文件格式版本；老文件无此字段则默认为 0，加载后会被改写为当前版本
+    #[serde(default)]
+    version: u32,
+    #[serde(default)]
+    master_config: Option<MasterConfigStored>,
+    #[serde(default)]
+    app_state: AppStateStored,
+    /// 下一个凭证 ID（对应 SQLite 的 AUTOINCREMENT 语义）
+    #[serde(default)]
+    next_id: i64,
+    #[serde(default)]
+    credentials: Vec<CredentialStored>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct MasterConfigStored {
+    /// base64 编码的 salt
+    salt: String,
+    /// base64 编码的 encrypted_verify
+    encrypted_verify: String,
+}
+
+#[derive(Default, Serialize, Deserialize, Debug)]
+struct AppStateStored {
+    #[serde(default)]
+    fail_count: i32,
+    /// 空 = 未锁定；非空 = lock_stamp() 格式的时间串
+    #[serde(default)]
+    locked_until: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct CredentialStored {
+    id: i64,
+    name: String,
+    #[serde(rename = "type")]
+    cred_type: i32,
+    url: String,
+    username: String,
+    /// base64 编码的密文
+    secret: String,
+    notes: String,
+    is_favorite: i32,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<&Credential> for CredentialStored {
+    fn from(c: &Credential) -> Self {
+        Self {
+            id: c.id,
+            name: c.name.clone(),
+            cred_type: c.cred_type,
+            url: c.url.clone(),
+            username: c.username.clone(),
+            secret: B64.encode(&c.secret_bytes),
+            notes: c.notes.clone(),
+            is_favorite: c.is_favorite,
+            created_at: c.created_at.clone(),
+            updated_at: c.updated_at.clone(),
+        }
+    }
+}
+
+impl From<CredentialStored> for Credential {
+    fn from(s: CredentialStored) -> Self {
+        let secret_bytes = B64.decode(&s.secret).unwrap_or_default();
+        Credential {
+            id: s.id,
+            name: s.name,
+            cred_type: s.cred_type,
+            url: s.url,
+            username: s.username,
+            secret: String::new(),
+            secret_bytes,
+            notes: s.notes,
+            is_favorite: s.is_favorite,
+            created_at: s.created_at,
+            updated_at: s.updated_at,
+        }
+    }
+}
+
 pub struct Store {
-    conn: Connection,
+    path: PathBuf,
+    vault: VaultFile,
+    /// 是否有待落盘的修改
+    dirty: bool,
+}
+
+impl std::fmt::Debug for Store {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Store")
+            .field("path", &self.path)
+            .field("next_id", &self.vault.next_id)
+            .field("credentials_count", &self.vault.credentials.len())
+            .field("dirty", &self.dirty)
+            .finish()
+    }
 }
 
 impl Store {
-    /// 打开（必要时创建）数据库并建表。
-    /// 连接参数与 Go 版 `?_journal_mode=WAL&_busy_timeout=5000` 等价。
-    pub fn open(db_path: &Path) -> Result<Store, String> {
-        if let Some(parent) = db_path.parent() {
+    /// 打开（必要时创建）数据文件。
+    /// - 文件不存在：返回空 vault，第一次写时才创建文件
+    /// - 文件为空：同上
+    /// - 文件损坏：报错（避免静默重置导致数据丢失）
+    pub fn open(path: &Path) -> Result<Store, String> {
+        if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("创建数据库目录失败: {e}"))?;
+                    .map_err(|e| format!("创建数据目录失败: {e}"))?;
             }
         }
 
-        let conn = Connection::open(db_path)
-            .map_err(|e| format!("数据库打开失败: {e}"))?;
+        let vault = match std::fs::read(path) {
+            Ok(data) if data.is_empty() => VaultFile {
+                version: VAULT_VERSION,
+                ..Default::default()
+            },
+            Ok(data) => {
+                let mut v: VaultFile = serde_json::from_slice(&data)
+                    .map_err(|e| format!("数据文件解析失败（已损坏）: {e}"))?;
+                // 老文件 version=0，加载后补成当前版本，下次写盘时落盘
+                if v.version == 0 {
+                    v.version = VAULT_VERSION;
+                }
+                v
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => VaultFile {
+                version: VAULT_VERSION,
+                ..Default::default()
+            },
+            Err(e) => return Err(format!("读取数据文件失败: {e}")),
+        };
 
-        // journal_mode 会返回一行结果，需用 query_row 读取
-        conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get::<_, String>(0))
-            .map_err(|e| format!("开启 WAL 模式失败: {e}"))?;
-        conn.execute_batch("PRAGMA busy_timeout=5000;")
-            .map_err(|e| format!("设置 busy_timeout 失败: {e}"))?;
-        conn.execute_batch(SCHEMA)
-            .map_err(|e| format!("初始化数据表失败: {e}"))?;
-
-        Ok(Store { conn })
+        Ok(Store {
+            path: path.to_path_buf(),
+            vault,
+            dirty: false,
+        })
     }
 
-    /// 关闭连接（触发 WAL checkpoint）
-    pub fn close(self) -> Result<(), String> {
-        self.conn.close().map_err(|(_, e)| format!("关闭数据库失败: {e}"))
+    /// 关闭并落盘（如果有未保存改动）
+    pub fn close(mut self) -> Result<(), String> {
+        self.flush()
     }
 
-    /// 在事务中执行，成功提交、失败回滚
-    pub fn with_transaction<T, F>(&mut self, f: F) -> Result<T, String>
-    where
-        F: FnOnce(&Transaction<'_>) -> Result<T, String>,
-    {
-        let tx = self
-            .conn
-            .transaction()
-            .map_err(|e| format!("开启事务失败: {e}"))?;
-        match f(&tx) {
-            Ok(value) => {
-                tx.commit().map_err(|e| format!("提交事务失败: {e}"))?;
-                Ok(value)
-            }
-            Err(e) => {
-                let _ = tx.rollback();
-                Err(e)
-            }
+    /// 原子写：写 `vault.json.tmp` 再 rename 成 `vault.json`，
+    /// 保证写到一半崩溃不会损坏已有数据。
+    pub fn flush(&mut self) -> Result<(), String> {
+        if !self.dirty {
+            return Ok(());
         }
+        let tmp = self.path.with_extension("json.tmp");
+        let data = serde_json::to_vec_pretty(&self.vault)
+            .map_err(|e| format!("序列化数据失败: {e}"))?;
+        crate::settings::write_private(&tmp, &data)?;
+        std::fs::rename(&tmp, &self.path).map_err(|e| format!("原子写入失败: {e}"))?;
+        self.dirty = false;
+        Ok(())
+    }
+
+    fn mark_dirty(&mut self) {
+        self.dirty = true;
     }
 
     // ===== 主密钥配置 =====
 
     pub fn get_master_config(&self) -> Result<MasterConfig, String> {
-        self.conn
-            .query_row(
-                "SELECT salt, encrypted_verify FROM master_config WHERE id = 1",
-                [],
-                |row| {
-                    Ok(MasterConfig {
-                        salt: row.get(0)?,
-                        encrypted_verify: row.get(1)?,
-                    })
-                },
-            )
-            .optional()
-            .map_err(|e| format!("读取主密钥配置失败: {e}"))?
-            .ok_or_else(|| "未设置主密钥".to_string())
+        let mc = self
+            .vault
+            .master_config
+            .as_ref()
+            .ok_or_else(|| "未设置主密钥".to_string())?;
+        Ok(MasterConfig {
+            salt: B64
+                .decode(&mc.salt)
+                .map_err(|e| format!("主密钥 salt 解码失败: {e}"))?,
+            encrypted_verify: B64
+                .decode(&mc.encrypted_verify)
+                .map_err(|e| format!("主密钥验证值解码失败: {e}"))?,
+        })
     }
 
-    pub fn set_master_config(&self, salt: &[u8], encrypted_verify: &[u8]) -> Result<(), String> {
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO master_config (id, salt, encrypted_verify) VALUES (1, ?, ?)",
-                params![salt, encrypted_verify],
-            )
-            .map_err(|e| format!("保存主密钥配置失败: {e}"))?;
+    pub fn set_master_config(&mut self, salt: &[u8], encrypted_verify: &[u8]) -> Result<(), String> {
+        self.vault.master_config = Some(MasterConfigStored {
+            salt: B64.encode(salt),
+            encrypted_verify: B64.encode(encrypted_verify),
+        });
+        self.mark_dirty();
         Ok(())
     }
 
@@ -155,75 +227,72 @@ impl Store {
 
     pub fn create_credential(&mut self, c: &mut Credential) -> Result<(), String> {
         let now = now_text();
-        self.conn
-            .execute(
-                "INSERT INTO credentials (name, type, url, username, secret, notes, is_favorite, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                params![
-                    c.name,
-                    c.cred_type,
-                    c.url,
-                    c.username,
-                    c.secret_bytes,
-                    c.notes,
-                    c.is_favorite,
-                    now,
-                    now
-                ],
-            )
-            .map_err(|e| format!("新增凭证失败: {e}"))?;
+        let id = self.vault.next_id.max(1);
+        // 自增：先取当前 next_id 作为新 id，再 +1
+        self.vault.next_id = id + 1;
 
-        c.id = self.conn.last_insert_rowid();
+        let stored = CredentialStored {
+            id,
+            name: c.name.clone(),
+            cred_type: c.cred_type,
+            url: c.url.clone(),
+            username: c.username.clone(),
+            secret: B64.encode(&c.secret_bytes),
+            notes: c.notes.clone(),
+            is_favorite: c.is_favorite,
+            created_at: to_rfc3339(&now),
+            updated_at: to_rfc3339(&now),
+        };
+        self.vault.credentials.push(stored);
+
+        c.id = id;
         c.created_at = to_rfc3339(&now);
         c.updated_at = to_rfc3339(&now);
+        self.mark_dirty();
         Ok(())
     }
 
     pub fn get_credential(&self, id: i64) -> Result<Credential, String> {
-        let sql = format!("SELECT {SELECT_COLUMNS} FROM credentials WHERE id = ?");
-        self.conn
-            .query_row(&sql, params![id], map_credential)
-            .optional()
-            .map_err(|e| format!("查询凭证失败: {e}"))?
+        self.vault
+            .credentials
+            .iter()
+            .find(|c| c.id == id)
+            .cloned()
+            .map(Credential::from)
             .ok_or_else(|| "凭证不存在".to_string())
     }
 
     pub fn update_credential(&mut self, c: &mut Credential) -> Result<(), String> {
         let now = now_text();
-        let affected = self
-            .conn
-            .execute(
-                "UPDATE credentials SET name=?, type=?, url=?, username=?, secret=?, notes=?, is_favorite=?, updated_at=?
-                 WHERE id=?",
-                params![
-                    c.name,
-                    c.cred_type,
-                    c.url,
-                    c.username,
-                    c.secret_bytes,
-                    c.notes,
-                    c.is_favorite,
-                    now,
-                    c.id
-                ],
-            )
-            .map_err(|e| format!("更新凭证失败: {e}"))?;
+        let idx = self
+            .vault
+            .credentials
+            .iter()
+            .position(|x| x.id == c.id)
+            .ok_or_else(|| "凭证不存在".to_string())?;
 
-        if affected == 0 {
-            return Err("凭证不存在".to_string());
-        }
+        let stored = &mut self.vault.credentials[idx];
+        stored.name = c.name.clone();
+        stored.cred_type = c.cred_type;
+        stored.url = c.url.clone();
+        stored.username = c.username.clone();
+        stored.secret = B64.encode(&c.secret_bytes);
+        stored.notes = c.notes.clone();
+        stored.is_favorite = c.is_favorite;
+        stored.updated_at = to_rfc3339(&now);
+
         c.updated_at = to_rfc3339(&now);
+        self.mark_dirty();
         Ok(())
     }
 
     pub fn delete_credential(&mut self, id: i64) -> Result<(), String> {
-        let affected = self
-            .conn
-            .execute("DELETE FROM credentials WHERE id = ?", params![id])
-            .map_err(|e| format!("删除凭证失败: {e}"))?;
-        if affected == 0 {
+        let before = self.vault.credentials.len();
+        self.vault.credentials.retain(|c| c.id != id);
+        if self.vault.credentials.len() == before {
             return Err("凭证不存在".to_string());
         }
+        self.mark_dirty();
         Ok(())
     }
 
@@ -231,175 +300,179 @@ impl Store {
         if ids.is_empty() {
             return Ok(());
         }
-        self.with_transaction(|tx| {
-            for id in ids {
-                tx.execute("DELETE FROM credentials WHERE id = ?", params![id])
-                    .map_err(|e| format!("删除凭证失败: {e}"))?;
-            }
-            Ok(())
-        })
-    }
-
-    pub fn toggle_favorite(&mut self, id: i64) -> Result<(), String> {
-        let now = now_text();
-        let affected = self
-            .conn
-            .execute(
-                "UPDATE credentials SET is_favorite = 1 - is_favorite, updated_at = ? WHERE id = ?",
-                params![now, id],
-            )
-            .map_err(|e| format!("切换收藏失败: {e}"))?;
-        if affected == 0 {
-            return Err("凭证不存在".to_string());
-        }
+        let set: std::collections::HashSet<i64> = ids.iter().copied().collect();
+        self.vault.credentials.retain(|c| !set.contains(&c.id));
+        self.mark_dirty();
         Ok(())
     }
 
-    /// 列表查询：按类型过滤 + 关键字模糊匹配（name/url/username）
+    pub fn toggle_favorite(&mut self, id: i64) -> Result<(), String> {
+        let c = self
+            .vault
+            .credentials
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or_else(|| "凭证不存在".to_string())?;
+        c.is_favorite = 1 - c.is_favorite;
+        c.updated_at = to_rfc3339(&now_text());
+        self.mark_dirty();
+        Ok(())
+    }
+
+    /// 列表查询：按类型过滤 + 关键字模糊匹配（name/url/username，大小写不敏感）
     pub fn list_credentials(&self, cred_type: Option<i32>, keyword: &str) -> Result<Vec<Credential>, String> {
-        let mut sql = format!("SELECT {SELECT_COLUMNS} FROM credentials WHERE 1=1");
-        let mut args: Vec<Box<dyn ToSql>> = Vec::new();
-
-        if let Some(t) = cred_type {
-            sql.push_str(" AND type = ?");
-            args.push(Box::new(t));
-        }
-        if !keyword.is_empty() {
-            sql.push_str(
-                r" AND (name LIKE ? ESCAPE '\' OR url LIKE ? ESCAPE '\' OR username LIKE ? ESCAPE '\')",
-            );
-            let kw = format!("%{}%", escape_like(keyword));
-            for _ in 0..3 {
-                args.push(Box::new(kw.clone()));
-            }
-        }
-        sql.push_str(" ORDER BY is_favorite DESC, updated_at DESC");
-
-        self.query_credentials(&sql, args)
+        let kw = keyword.to_lowercase();
+        let mut out: Vec<Credential> = self
+            .vault
+            .credentials
+            .iter()
+            .filter(|c| {
+                if let Some(t) = cred_type {
+                    if c.cred_type != t {
+                        return false;
+                    }
+                }
+                if !kw.is_empty() {
+                    let hay = format!("{} {} {}", c.name, c.url, c.username).to_lowercase();
+                    if !hay.contains(&kw) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .cloned()
+            .map(Credential::from)
+            .collect();
+        // 与 SQLite 版一致：收藏优先，再按 updated_at 倒序
+        out.sort_by(|a, b| {
+            b.is_favorite
+                .cmp(&a.is_favorite)
+                .then_with(|| b.updated_at.cmp(&a.updated_at))
+        });
+        Ok(out)
     }
 
     /// 收藏列表
     pub fn list_favorites(&self, keyword: &str) -> Result<Vec<Credential>, String> {
-        let mut sql = format!("SELECT {SELECT_COLUMNS} FROM credentials WHERE is_favorite = 1");
-        let mut args: Vec<Box<dyn ToSql>> = Vec::new();
-
-        if !keyword.is_empty() {
-            sql.push_str(
-                r" AND (name LIKE ? ESCAPE '\' OR url LIKE ? ESCAPE '\' OR username LIKE ? ESCAPE '\')",
-            );
-            let kw = format!("%{}%", escape_like(keyword));
-            for _ in 0..3 {
-                args.push(Box::new(kw.clone()));
-            }
-        }
-        sql.push_str(" ORDER BY updated_at DESC");
-
-        self.query_credentials(&sql, args)
+        let kw = keyword.to_lowercase();
+        let mut out: Vec<Credential> = self
+            .vault
+            .credentials
+            .iter()
+            .filter(|c| {
+                if c.is_favorite != 1 {
+                    return false;
+                }
+                if !kw.is_empty() {
+                    let hay = format!("{} {} {}", c.name, c.url, c.username).to_lowercase();
+                    if !hay.contains(&kw) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .cloned()
+            .map(Credential::from)
+            .collect();
+        out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        Ok(out)
     }
 
     /// 全量导出用
     pub fn get_all_credentials(&self) -> Result<Vec<Credential>, String> {
-        let sql = format!("SELECT {SELECT_COLUMNS} FROM credentials ORDER BY id");
-        self.query_credentials(&sql, Vec::new())
-    }
-
-    fn query_credentials(&self, sql: &str, args: Vec<Box<dyn ToSql>>) -> Result<Vec<Credential>, String> {
-        let mut stmt = self.conn.prepare(sql).map_err(|e| format!("查询凭证失败: {e}"))?;
-        let rows = stmt
-            .query_map(params_from_iter(args.iter().map(|b| b.as_ref())), map_credential)
-            .map_err(|e| format!("查询凭证失败: {e}"))?;
-
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row.map_err(|e| format!("读取凭证失败: {e}"))?);
-        }
+        let mut out: Vec<Credential> = self
+            .vault
+            .credentials
+            .iter()
+            .cloned()
+            .map(Credential::from)
+            .collect();
+        out.sort_by_key(|c| c.id);
         Ok(out)
     }
 
     /// 各类型数量，key -1=全部, -2=收藏
     pub fn count_by_type(&self) -> Result<BTreeMap<i32, i32>, String> {
         let mut counts = BTreeMap::new();
-
-        let total: i32 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM credentials", [], |row| row.get(0))
-            .map_err(|e| format!("统计失败: {e}"))?;
-        counts.insert(-1, total);
-
-        let favorites: i32 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM credentials WHERE is_favorite = 1", [], |row| row.get(0))
-            .map_err(|e| format!("统计失败: {e}"))?;
-        counts.insert(-2, favorites);
-
-        let mut stmt = self
-            .conn
-            .prepare("SELECT type, COUNT(*) FROM credentials GROUP BY type")
-            .map_err(|e| format!("统计失败: {e}"))?;
-        let rows = stmt
-            .query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?)))
-            .map_err(|e| format!("统计失败: {e}"))?;
-        for row in rows {
-            let (t, count) = row.map_err(|e| format!("统计失败: {e}"))?;
-            counts.insert(t, count);
+        let mut total = 0;
+        let mut favorites = 0;
+        for c in &self.vault.credentials {
+            total += 1;
+            if c.is_favorite == 1 {
+                favorites += 1;
+            }
+            *counts.entry(c.cred_type).or_insert(0) += 1;
         }
+        counts.insert(-1, total);
+        counts.insert(-2, favorites);
         Ok(counts)
+    }
+
+    /// 修改主密钥时重新加密所有凭证的密文。
+    /// 在内存里完成全部解密 + 重加密，全部成功才写回 vault；任何一条失败
+    /// 都不修改 vault 内容（等价于事务回滚），已解密的明文立即清零。
+    pub fn reencrypt_all(
+        &mut self,
+        old_key: &crate::crypto::Key,
+        new_key: &crate::crypto::Key,
+    ) -> Result<(), String> {
+        use zeroize::Zeroize;
+
+        // 先在临时缓冲区里完成全部解密 + 重加密，失败时不动 vault
+        let mut reencrypted: Vec<Vec<u8>> = Vec::with_capacity(self.vault.credentials.len());
+        for c in &self.vault.credentials {
+            let ciphertext = B64
+                .decode(&c.secret)
+                .map_err(|e| format!("密文 base64 解码失败 ID={}: {e}", c.id))?;
+            let mut plaintext = match crate::crypto::decrypt(old_key, &ciphertext) {
+                Ok(pt) => pt,
+                Err(e) => {
+                    for p in reencrypted.iter_mut() {
+                        p.zeroize();
+                    }
+                    return Err(format!("解密凭证 ID={} 失败: {e}", c.id));
+                }
+            };
+            // reencrypted 存的是「重加密后的密文」；明文用完立即清零
+            let encrypted = match crate::crypto::encrypt(new_key, &plaintext) {
+                Ok(data) => data,
+                Err(e) => {
+                    plaintext.zeroize();
+                    for p in reencrypted.iter_mut() {
+                        p.zeroize();
+                    }
+                    return Err(format!("重新加密凭证 ID={} 失败: {e}", c.id));
+                }
+            };
+            plaintext.zeroize();
+            reencrypted.push(encrypted);
+        }
+
+        // 全部成功，写回 vault + 落盘标记
+        let now = to_rfc3339(&now_text());
+        for (idx, encrypted) in reencrypted.into_iter().enumerate() {
+            self.vault.credentials[idx].secret = B64.encode(&encrypted);
+            self.vault.credentials[idx].updated_at = now.clone();
+        }
+        self.mark_dirty();
+        Ok(())
     }
 
     // ===== 解锁失败状态（暴力破解防护）=====
 
     pub fn get_unlock_state(&self) -> Result<UnlockState, String> {
-        let row = self
-            .conn
-            .query_row(
-                "SELECT fail_count, locked_until FROM app_state WHERE id = 1",
-                [],
-                |row| Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?)),
-            )
-            .optional()
-            .map_err(|e| format!("读取锁定状态失败: {e}"))?;
-
-        let Some((fail_count, locked_str)) = row else {
-            return Ok(UnlockState::default());
-        };
-
         Ok(UnlockState {
-            fail_count,
-            locked_until: parse_lock_stamp(&locked_str),
+            fail_count: self.vault.app_state.fail_count,
+            locked_until: parse_lock_stamp(&self.vault.app_state.locked_until),
         })
     }
 
-    pub fn set_unlock_state(&self, state: &UnlockState) -> Result<(), String> {
-        let locked = state.locked_until.map(lock_stamp).unwrap_or_default();
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO app_state (id, fail_count, locked_until) VALUES (1, ?, ?)",
-                params![state.fail_count, locked],
-            )
-            .map_err(|e| format!("保存锁定状态失败: {e}"))?;
+    pub fn set_unlock_state(&mut self, state: &UnlockState) -> Result<(), String> {
+        self.vault.app_state.fail_count = state.fail_count;
+        self.vault.app_state.locked_until = state.locked_until.map(lock_stamp).unwrap_or_default();
+        self.mark_dirty();
         Ok(())
     }
-}
-
-fn map_credential(row: &rusqlite::Row<'_>) -> rusqlite::Result<Credential> {
-    let created: String = row.get(8)?;
-    let updated: String = row.get(9)?;
-    // TEXT/BLOB 都能读成 Vec<u8>，兼容 Go 版写入的 TEXT 密文
-    let secret: Vec<u8> = row.get(5)?;
-
-    Ok(Credential {
-        id: row.get(0)?,
-        name: row.get(1)?,
-        cred_type: row.get(2)?,
-        url: row.get(3)?,
-        username: row.get(4)?,
-        secret: String::new(),
-        secret_bytes: secret,
-        notes: row.get(6)?,
-        is_favorite: row.get(7)?,
-        created_at: to_rfc3339(&created),
-        updated_at: to_rfc3339(&updated),
-    })
 }
 
 #[cfg(test)]
@@ -411,7 +484,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("pm-store-test-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("data.db");
+        let path = dir.join("vault.json");
         (Store::open(&path).unwrap(), dir)
     }
 
@@ -425,15 +498,19 @@ mod tests {
     }
 
     #[test]
-    fn open_creates_tables_and_is_idempotent() {
-        let (store, dir) = temp_store("schema");
+    fn open_creates_empty_vault_and_is_idempotent() {
+        let (mut store, dir) = temp_store("schema");
         assert!(store.get_master_config().is_err());
-        store.close().unwrap();
+        // 写一次空改动让文件落盘
+        store.set_master_config(&[1], &[2]).unwrap();
+        store.flush().unwrap();
+        drop(store);
 
-        // 二次打开不应报错
-        let store = Store::open(&dir.join("data.db")).unwrap();
-        store.get_unlock_state().unwrap();
-        store.close().unwrap();
+        // 二次打开不应报错，且能读回配置
+        let store = Store::open(&dir.join("vault.json")).unwrap();
+        let mc = store.get_master_config().unwrap();
+        assert_eq!(mc.salt, vec![1]);
+        assert_eq!(mc.encrypted_verify, vec![2]);
     }
 
     #[test]
@@ -464,16 +541,35 @@ mod tests {
     }
 
     #[test]
-    fn search_escapes_like_wildcards() {
+    fn search_is_case_insensitive_and_matches_name_url_username() {
         let (mut store, _dir) = temp_store("search");
-        store.create_credential(&mut cred("100%_safe", TYPE_BROWSER_PASSWORD, b"a")).unwrap();
-        store.create_credential(&mut cred("other", TYPE_BROWSER_PASSWORD, b"b")).unwrap();
+        store
+            .create_credential(&mut cred("GitHub", TYPE_BROWSER_PASSWORD, b"a"))
+            .unwrap();
+        store
+            .create_credential(&mut cred("gitlab", TYPE_BROWSER_PASSWORD, b"b"))
+            .unwrap();
+        store
+            .create_credential(&mut cred("other", TYPE_BROWSER_PASSWORD, b"c"))
+            .unwrap();
 
-        assert_eq!(store.list_credentials(None, "100%").unwrap().len(), 1);
-        assert_eq!(store.list_credentials(None, "_safe").unwrap().len(), 1);
-        // 通配符已被转义，纯 '%' 不应匹配到全部
-        assert_eq!(store.list_credentials(None, "zzz").unwrap().len(), 0);
-        assert_eq!(store.list_credentials(Some(TYPE_BROWSER_PASSWORD), "").unwrap().len(), 2);
+        // 大小写不敏感
+        assert_eq!(store.list_credentials(None, "GIT").unwrap().len(), 2);
+        // 匹配 url
+        let mut with_url = cred("site", TYPE_BROWSER_PASSWORD, b"d");
+        with_url.url = "https://example.com/login".into();
+        store.create_credential(&mut with_url).unwrap();
+        assert_eq!(store.list_credentials(None, "example.com").unwrap().len(), 1);
+        // 匹配 username
+        let mut with_user = cred("user", TYPE_BROWSER_PASSWORD, b"e");
+        with_user.username = "alice@example.com".into();
+        store.create_credential(&mut with_user).unwrap();
+        assert_eq!(store.list_credentials(None, "alice").unwrap().len(), 1);
+        // 类型过滤
+        assert_eq!(
+            store.list_credentials(Some(TYPE_BROWSER_PASSWORD), "").unwrap().len(),
+            5
+        );
         assert_eq!(store.list_credentials(Some(TYPE_API_KEY), "").unwrap().len(), 0);
     }
 
@@ -500,7 +596,7 @@ mod tests {
 
     #[test]
     fn master_config_and_unlock_state() {
-        let (store, _dir) = temp_store("master");
+        let (mut store, _dir) = temp_store("master");
         store.set_master_config(&[1, 2, 3], &[4, 5, 6]).unwrap();
         let mc = store.get_master_config().unwrap();
         assert_eq!(mc.salt, vec![1, 2, 3]);
@@ -521,17 +617,48 @@ mod tests {
     }
 
     #[test]
-    fn transaction_rolls_back_on_error() {
-        let (mut store, _dir) = temp_store("tx");
+    fn flush_writes_atomic_and_reload_reads_back() {
+        let (mut store, dir) = temp_store("flush");
+        store
+            .create_credential(&mut cred("GitHub", TYPE_API_KEY, &[0xAB, 0xCD]))
+            .unwrap();
+        store.flush().unwrap();
+
+        // 原子写后会留有 vault.json，没有残留 .tmp
+        assert!(dir.join("vault.json").exists());
+        assert!(!dir.join("vault.json.tmp").exists());
+
+        // 重新打开能读回
+        let reopened = Store::open(&dir.join("vault.json")).unwrap();
+        let list = reopened.list_credentials(None, "").unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "GitHub");
+        assert_eq!(list[0].secret_bytes, vec![0xAB, 0xCD]);
+    }
+
+    #[test]
+    fn next_id_persists_across_reopen() {
+        let (mut store, dir) = temp_store("nextid");
         let mut a = cred("a", TYPE_BROWSER_PASSWORD, b"x");
         store.create_credential(&mut a).unwrap();
+        store.flush().unwrap();
+        drop(store);
 
-        let result: Result<(), String> = store.with_transaction(|tx| {
-            tx.execute("DELETE FROM credentials WHERE id = ?", params![a.id]).unwrap();
-            Err("故意失败".to_string())
-        });
-        assert!(result.is_err());
-        // 回滚后数据仍在
-        assert!(store.get_credential(a.id).is_ok());
+        let mut store = Store::open(&dir.join("vault.json")).unwrap();
+        let mut b = cred("b", TYPE_BROWSER_PASSWORD, b"y");
+        store.create_credential(&mut b).unwrap();
+        // 重开后新增的 id 必须大于之前最大 id
+        assert!(b.id > a.id);
+    }
+
+    #[test]
+    fn corrupt_file_is_reported_not_silently_reset() {
+        let dir = std::env::temp_dir().join("pm-store-test-corrupt");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("vault.json"), b"{ not valid json").unwrap();
+
+        let err = Store::open(&dir.join("vault.json")).unwrap_err();
+        assert!(err.contains("已损坏"), "实际: {err}");
     }
 }

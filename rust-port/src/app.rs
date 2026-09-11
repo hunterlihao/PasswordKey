@@ -18,7 +18,6 @@ use crate::model::{self, Credential, CredentialView};
 use crate::paths;
 use crate::settings::{write_private, Settings};
 use crate::store::Store;
-use crate::timefmt;
 
 pub struct App {
     key: Option<Key>,
@@ -35,7 +34,7 @@ impl App {
         let settings = Settings::load(&data_dir)?;
 
         let db_path = if settings.db_path.trim().is_empty() {
-            data_dir.join("data.db")
+            data_dir.join("vault.json")
         } else {
             PathBuf::from(settings.db_path.trim())
         };
@@ -110,14 +109,14 @@ impl App {
         let token = crypto::generate_verify_token().map_err(String::from)?;
         let encrypted_verify = crypto::encrypt(&key, &token).map_err(String::from)?;
 
-        self.store()?.set_master_config(&salt, &encrypted_verify)?;
+        self.store_mut()?.set_master_config(&salt, &encrypted_verify)?;
 
         self.key = Some(key);
         Ok(())
     }
 
     pub fn unlock(&mut self, password: &str) -> Result<(), String> {
-        let store = self.store()?;
+        let store = self.store_mut()?;
 
         // 暴力破解防护：状态持久化在数据库里，重启应用不会重置
         let mut state = store.get_unlock_state()?;
@@ -152,7 +151,7 @@ impl App {
         Ok(())
     }
 
-    /// 修改主密钥：事务内重新加密所有凭证，失败整体回滚
+    /// 修改主密钥：在内存里重新加密所有凭证，全部成功才落盘，失败等价回滚
     pub fn change_master_password(&mut self, old_password: &str, new_password: &str) -> Result<(), String> {
         let mc = self.store()?.get_master_config()?;
 
@@ -169,50 +168,18 @@ impl App {
 
         let outcome = {
             let store = self.store_mut()?;
-            store.with_transaction(|tx| {
-                // 先取出全部密文，再逐条重新加密（避免边读边写同一语句）
-                let rows: Vec<(i64, Vec<u8>)> = {
-                    let mut stmt = tx
-                        .prepare("SELECT id, secret FROM credentials")
-                        .map_err(|e| format!("读取凭证失败: {e}"))?;
-                    let mapped = stmt
-                        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?)))
-                        .map_err(|e| format!("读取凭证失败: {e}"))?;
-                    let mut collected = Vec::new();
-                    for row in mapped {
-                        collected.push(row.map_err(|e| format!("读取凭证失败: {e}"))?);
-                    }
-                    collected
-                };
-
-                for (id, secret) in rows {
-                    let mut plaintext = crypto::decrypt(&old_key, &secret)
-                        .map_err(|e| format!("解密凭证 ID={id} 失败: {e}"))?;
-                    let encrypted = crypto::encrypt(&new_key, &plaintext)
-                        .map_err(|e| format!("重新加密凭证 ID={id} 失败: {e}"))?;
-                    plaintext.zeroize();
-
-                    tx.execute(
-                        "UPDATE credentials SET secret=?, updated_at=? WHERE id=?",
-                        rusqlite::params![encrypted, timefmt::now_text(), id],
-                    )
-                    .map_err(|e| format!("更新凭证 ID={id} 失败: {e}"))?;
-                }
-
-                tx.execute(
-                    "INSERT OR REPLACE INTO master_config (id, salt, encrypted_verify) VALUES (1, ?, ?)",
-                    rusqlite::params![new_salt, new_verify],
-                )
-                .map_err(|e| format!("更新主密钥配置失败: {e}"))?;
-
-                Ok(())
-            })
+            // reencrypt_all 只改内存；失败时不写盘，等价事务回滚
+            let result = store.reencrypt_all(&old_key, &new_key);
+            if result.is_ok() {
+                store.set_master_config(&new_salt, &new_verify)?;
+                store.flush()?;
+            }
+            result
         };
 
         old_key.zeroize();
 
         if let Err(e) = outcome {
-            // 事务失败：新密钥必须清零，不能留在内存里
             new_key.zeroize();
             return Err(e);
         }
@@ -507,11 +474,11 @@ impl App {
 
         let new_path = dialogs::save_file(
             host,
-            "选择数据库存储位置",
-            "data.db",
-            ("数据库文件 (*.db)", &["db"]),
+            "选择数据文件存储位置",
+            "vault.json",
+            ("JSON 文件 (*.json)", &["json"]),
         )
-        .ok_or_else(|| "已取消".to_string())?;
+            .ok_or_else(|| "已取消".to_string())?;
 
         if new_path == self.db_path {
             return Ok(self.db_path_string());
@@ -519,7 +486,7 @@ impl App {
 
         let old_path = self.db_path.clone();
 
-        // 先关闭连接，触发 WAL checkpoint，避免只复制 data.db 而丢失未落盘的事务
+        // 先落盘并关闭连接，确保 vault.json 内容是最新的
         if let Some(store) = self.store.take() {
             if let Err(e) = store.close() {
                 self.reopen(&old_path)?;
@@ -561,7 +528,7 @@ impl App {
             return Err("数据库未初始化".to_string());
         }
 
-        let default_path = self.data_dir.join("data.db");
+        let default_path = self.data_dir.join("vault.json");
         if self.db_path == default_path {
             return Err("已经是默认路径".to_string());
         }
@@ -626,26 +593,11 @@ fn decrypt_secret(key: &Key, secret_bytes: &[u8]) -> Result<String, String> {
     }
 }
 
-/// 复制 SQLite 主文件及配套的 -wal / -shm，并限制副本权限
+/// 复制单个 JSON 数据文件到新位置，并限制副本权限
 pub fn copy_db_files(src_path: &Path, dst_path: &Path) -> Result<(), String> {
-    let data = std::fs::read(src_path).map_err(|e| format!("无法读取当前数据库: {e}"))?;
+    let data = std::fs::read(src_path).map_err(|e| format!("无法读取当前数据文件: {e}"))?;
     write_private(dst_path, &data)?;
-
-    for suffix in ["-wal", "-shm"] {
-        let src = with_suffix(src_path, suffix);
-        if !src.exists() {
-            continue;
-        }
-        let data = std::fs::read(&src).map_err(|e| format!("读取 {} 失败: {e}", src.display()))?;
-        write_private(&with_suffix(dst_path, suffix), &data)?;
-    }
     Ok(())
-}
-
-fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut os = path.as_os_str().to_os_string();
-    os.push(suffix);
-    PathBuf::from(os)
 }
 
 #[cfg(test)]
@@ -671,7 +623,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("pm-app-test-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("data.db");
+        let db_path = dir.join("vault.json");
         let store = Store::open(&db_path).unwrap();
         let app = App::for_test(store, Settings::default(), dir.clone(), db_path);
         (app, dir)
@@ -817,21 +769,20 @@ mod tests {
     }
 
     #[test]
-    fn copy_db_files_copies_wal_sidecars() {
-        let (mut app, dir) = temp_app("copy");
-        app.setup_master("pw").unwrap();
-        app.add_credential(sample_credential("a", "b")).unwrap();
-        // 人为造一个 -wal 文件，验证会被一起复制
-        let wal = with_suffix(&dir.join("data.db"), "-wal");
-        std::fs::write(&wal, b"wal-data").unwrap();
+    fn copy_db_files_copies_single_json_file() {
+        let dir = std::env::temp_dir().join("pm-app-test-copy-single");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("vault.json");
+        std::fs::write(&src, br#"{"version":1}"#).unwrap();
 
-        let target = dir.join("copy").join("data.db");
-        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-        copy_db_files(&dir.join("data.db"), &target).unwrap();
+        let target_dir = dir.join("copy");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let target = target_dir.join("vault.json");
+        copy_db_files(&src, &target).unwrap();
 
         assert!(target.exists());
-        assert!(with_suffix(&target, "-wal").exists());
-        assert_eq!(std::fs::read(with_suffix(&target, "-wal")).unwrap(), b"wal-data");
+        assert_eq!(std::fs::read(&target).unwrap(), br#"{"version":1}"#);
     }
 
     #[test]
@@ -851,10 +802,10 @@ mod tests {
         std::fs::create_dir_all(&fresh_dir).unwrap();
         let mut fresh = App {
             key: None,
-            store: Some(Store::open(&fresh_dir.join("data.db")).unwrap()),
+            store: Some(Store::open(&fresh_dir.join("vault.json")).unwrap()),
             settings: Settings::default(),
             data_dir: fresh_dir.clone(),
-            db_path: fresh_dir.join("data.db"),
+            db_path: fresh_dir.join("vault.json"),
         };
         fresh.setup_master("pw2").unwrap();
 

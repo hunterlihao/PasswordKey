@@ -9,7 +9,7 @@ pub const SETTINGS_FILE: &str = "settings.json";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
-    /// 自定义数据库路径；为空表示使用数据目录下的 data.db
+    /// 自定义数据文件路径；为空表示使用数据目录下的 vault.json
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub db_path: String,
 }
@@ -82,7 +82,7 @@ mod tests {
     fn save_then_load_roundtrip() {
         let dir = temp_dir("roundtrip");
         let s = Settings {
-            db_path: "E:\\OwnerNode\\Data Save\\PasswordKey\\data.db".to_string(),
+            db_path: "E:\\OwnerNode\\Data Save\\PasswordKey\\vault.json".to_string(),
         };
         s.save(&dir).unwrap();
         let loaded = Settings::load(&dir).unwrap();
