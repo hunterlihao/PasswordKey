@@ -13,9 +13,9 @@ let selectMode = false;
 let clipboardClearTimer = null;
 
 // 常量
-const SPLASH_ANIM_DELAY = 2600;
-const SPLASH_UNLOCK_DELAY = 800;
-const SPLASH_FADE_DELAY = 600;
+const SPLASH_ANIM_DELAY = 800;
+const SPLASH_UNLOCK_DELAY = 300;
+const SPLASH_FADE_DELAY = 250;
 const DEFAULT_PASSWORD_LENGTH = 16;
 const CLIPBOARD_CLEAR_DELAY = 30000;
 const SEARCH_DEBOUNCE_DELAY = 300;
@@ -72,6 +72,11 @@ function getCredBadge(type) { return (CRED_TYPES[type] || CRED_TYPES[0]).badge; 
 
 async function init() {
     const splash = document.getElementById('splash');
+
+    // 立即发 IsMasterSet，和 splash 动画并行，
+    // 动画结束时 RPC 也回来了，不额外等待
+    const masterPromise = IsMasterSet().catch(() => null);
+
     if (splash) {
         // 等动画播放完毕
         await new Promise(r => setTimeout(r, SPLASH_ANIM_DELAY));
@@ -86,7 +91,7 @@ async function init() {
     }
 
     try {
-        const isMasterSet = await IsMasterSet();
+        const isMasterSet = await masterPromise;
         if (isMasterSet) {
             showLoginView();
         } else {
