@@ -133,8 +133,7 @@ impl std::fmt::Debug for Store {
 
 impl Store {
     /// 打开（必要时创建）数据文件。
-    /// - 文件不存在：返回空 vault，第一次写时才创建文件
-    /// - 文件为空：同上
+    /// - 文件不存在 / 为空：创建空 vault 并**立即落盘**，让用户能直接看到 `vault.json`
     /// - 文件损坏：报错（避免静默重置导致数据丢失）
     pub fn open(path: &Path) -> Result<Store, String> {
         if let Some(parent) = path.parent() {
@@ -144,32 +143,44 @@ impl Store {
             }
         }
 
-        let vault = match std::fs::read(path) {
-            Ok(data) if data.is_empty() => VaultFile {
-                version: VAULT_VERSION,
-                ..Default::default()
-            },
+        let (vault, needs_init_write) = match std::fs::read(path) {
+            Ok(data) if data.is_empty() => (
+                VaultFile {
+                    version: VAULT_VERSION,
+                    ..Default::default()
+                },
+                true,
+            ),
             Ok(data) => {
                 let mut v: VaultFile = serde_json::from_slice(&data)
                     .map_err(|e| format!("数据文件解析失败（已损坏）: {e}"))?;
-                // 老文件 version=0，加载后补成当前版本，下次写盘时落盘
-                if v.version == 0 {
+                // 老文件 version=0，加载后补成当前版本并落盘
+                let was_old = v.version == 0;
+                if was_old {
                     v.version = VAULT_VERSION;
                 }
-                v
+                (v, was_old)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => VaultFile {
-                version: VAULT_VERSION,
-                ..Default::default()
-            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (
+                VaultFile {
+                    version: VAULT_VERSION,
+                    ..Default::default()
+                },
+                true,
+            ),
             Err(e) => return Err(format!("读取数据文件失败: {e}")),
         };
 
-        Ok(Store {
+        let mut store = Store {
             path: path.to_path_buf(),
             vault,
-            dirty: false,
-        })
+            dirty: needs_init_write,
+        };
+        // 文件不存在 / 为空 / 老版本时，立即落盘，让用户能直接看到 vault.json
+        if needs_init_write {
+            store.flush()?;
+        }
+        Ok(store)
     }
 
     /// 关闭并落盘（如果有未保存改动）
