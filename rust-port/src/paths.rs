@@ -83,20 +83,23 @@ fn ensure_writable_dir(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// WebView2 用户数据目录名
-pub const WEBVIEW_PROFILE_DIR: &str = "WebView2";
-
-/// WebView2 profile 目录（便携版把它也放在数据目录里，
-/// 避免在 %LOCALAPPDATA% 留下 WebView2 数据）
-pub fn webview_profile_dir(data_dir: &Path) -> PathBuf {
-    data_dir.join(WEBVIEW_PROFILE_DIR)
+/// WebView2 用户数据目录：放在 `%LOCALAPPDATA%\PasswordManager\WebView2`，
+/// **不**放进便携 `data/` 目录。原因：前端是编译期内联的单文件 HTML，
+/// 没有外部资源请求，WebView2 的缓存 / IndexedDB 对应用毫无价值；
+/// 而 `data/` 目录只应存放用户数据（vault.json / settings.json），
+/// 混入 WebView2 缓存会让「拷走 data 就是全部数据」的便携语义变模糊。
+pub fn webview_profile_dir() -> Result<PathBuf, String> {
+    let local_app_data = std::env::var("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .map_err(|_| "无法获取 %LOCALAPPDATA%".to_string())?;
+    Ok(local_app_data.join("PasswordManager").join("WebView2"))
 }
 
-/// 把 WebView2 的用户数据目录指向便携目录。
+/// 把 WebView2 的用户数据目录指向 `%LOCALAPPDATA%\PasswordManager\WebView2`。
 /// WebView2 会读取 `WEBVIEW2_USER_DATA_FOLDER` 环境变量，
 /// 且必须在创建 WebView 环境之前设置。
-pub fn apply_portable_webview_profile(data_dir: &Path) -> Result<PathBuf, String> {
-    let dir = webview_profile_dir(data_dir);
+pub fn apply_portable_webview_profile() -> Result<PathBuf, String> {
+    let dir = webview_profile_dir()?;
     fs::create_dir_all(&dir).map_err(|e| format!("创建 WebView2 数据目录失败: {e}"))?;
     std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &dir);
     Ok(dir)
@@ -134,14 +137,25 @@ mod tests {
     }
 
     #[test]
-    fn portable_webview_profile_creates_dir_and_sets_env() {
-        let dir = std::env::temp_dir().join("pm-paths-test-webview");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+    fn webview_profile_dir_points_to_local_appdata() {
+        // webview_profile_dir 不再依赖 data_dir，固定指向 %LOCALAPPDATA%
+        let profile = webview_profile_dir().unwrap();
+        let local = std::env::var("LOCALAPPDATA").unwrap();
+        assert_eq!(
+            profile,
+            PathBuf::from(local).join("PasswordManager").join("WebView2")
+        );
+    }
 
-        let profile = apply_portable_webview_profile(&dir).unwrap();
-        assert_eq!(profile, webview_profile_dir(&dir));
+    #[test]
+    fn apply_portable_webview_profile_creates_dir_and_sets_env() {
+        let profile = apply_portable_webview_profile().unwrap();
         assert!(profile.is_dir());
-        assert_eq!(std::env::var("WEBVIEW2_USER_DATA_FOLDER").unwrap(), profile.to_string_lossy());
+        assert_eq!(
+            std::env::var("WEBVIEW2_USER_DATA_FOLDER").unwrap(),
+            profile.to_string_lossy()
+        );
+        // 确保目录不在便携 data 下（应含 PasswordManager 段）
+        assert!(profile.to_string_lossy().contains("PasswordManager"));
     }
 }

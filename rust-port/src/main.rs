@@ -76,10 +76,11 @@ fn main() {
     };
     let app = Arc::new(Mutex::new(app));
 
-    // 便携版：让 WebView2 的 profile 也落在数据目录里（必须在创建 WebView 之前设置）
+    // WebView2 的缓存目录放到 %LOCALAPPDATA%，不污染便携 data/ 目录
+    // （前端是内联 HTML，WebView2 缓存对应用无价值；data/ 只存 vault.json + settings.json）
     {
-        let guard = app.lock().expect("初始化后不应被污染");
-        if let Err(err) = paths::apply_portable_webview_profile(guard.data_dir()) {
+        let _guard = app.lock().expect("初始化后不应被污染");
+        if let Err(err) = paths::apply_portable_webview_profile() {
             // 只是影响缓存位置，失败不阻塞启动
             eprintln!("警告: {err}，将使用系统默认的 WebView2 数据目录");
         }
