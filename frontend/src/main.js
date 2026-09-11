@@ -870,6 +870,9 @@ window.toggleFavorite = async function(id) {
             btn.innerHTML = isActive ? '☆' : '★';
         }
 
+        // 刷新各 tab 的计数徽标（收藏数变化）
+        refreshCounts();
+
         // 收藏筛选下取消收藏时，需要移除该项
         if (currentFilter === -2) {
             loadCredentials();
