@@ -92,7 +92,10 @@ fn main() {
     let mut window_builder = WindowBuilder::new()
         .with_title("密码管理器")
         .with_inner_size(LogicalSize::new(900.0, 700.0))
-        .with_min_inner_size(LogicalSize::new(720.0, 520.0));
+        .with_min_inner_size(LogicalSize::new(720.0, 520.0))
+        // 窗口先隐藏，等 WebView2 初始化完成（加载完 app.html 含 splash）后再显示，
+        // 避免用户先看到 2.5 秒白屏（Windows 窗口默认白色背景）
+        .with_visible(false);
     if let Some(icon) = load_app_icon() {
         window_builder = window_builder.with_window_icon(Some(icon));
     }
@@ -118,6 +121,10 @@ fn main() {
     let webview = with_browser_args(builder)
         .build(&window)
         .expect("创建 WebView 失败");
+
+    // WebView2 初始化完成、app.html（含 splash 动画）已加载后，再显示窗口，
+    // 用户直接看到 splash 动画，不再有白屏
+    window.set_visible(true);
 
     // 系统托盘：关闭按钮不再退出，而是隐藏到托盘后台运行。
     // 托盘创建失败（极罕见，仅 Shell 通知区不可用时）会降级为「关闭即退出」。
