@@ -13,9 +13,9 @@ let selectMode = false;
 let clipboardClearTimer = null;
 
 // 常量
-const SPLASH_ANIM_DELAY = 800;
-const SPLASH_UNLOCK_DELAY = 300;
-const SPLASH_FADE_DELAY = 250;
+const SPLASH_ANIM_DELAY = 2600;
+const SPLASH_UNLOCK_DELAY = 800;
+const SPLASH_FADE_DELAY = 600;
 const DEFAULT_PASSWORD_LENGTH = 16;
 const CLIPBOARD_CLEAR_DELAY = 30000;
 const SEARCH_DEBOUNCE_DELAY = 300;
