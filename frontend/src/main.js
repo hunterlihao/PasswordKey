@@ -223,26 +223,23 @@ window.showMainView = async function() {
 async function refreshCounts() {
     try {
         credCounts = await GetCredentialCounts();
-        document.querySelectorAll('.tab[data-type]').forEach(tab => {
-            const t = parseInt(tab.dataset.type);
-            const count = credCounts[t] || 0;
-            const existing = tab.querySelector('.tab-count');
-            if (existing) existing.textContent = count;
-            else if (count > 0) tab.insertAdjacentHTML('beforeend', ` <span class="tab-count">${count}</span>`);
-        });
+        renderTabCounts();
     } catch (_) {}
 }
 
+// 根据 credCounts 渲染各 tab 的数量徽标
+function renderTabCounts() {
+    document.querySelectorAll('.tab[data-type]').forEach(tab => {
+        const t = parseInt(tab.dataset.type);
+        const count = credCounts[t] || 0;
+        const existing = tab.querySelector('.tab-count');
+        if (existing) existing.textContent = count;
+        else if (count > 0) tab.insertAdjacentHTML('beforeend', ` <span class="tab-count">${count}</span>`);
+    });
+}
+
 async function loadCredentials() {
-    try {
-        document.querySelectorAll('.tab[data-type]').forEach(tab => {
-            const t = parseInt(tab.dataset.type);
-            const count = credCounts[t] || 0;
-            const existing = tab.querySelector('.tab-count');
-            if (existing) existing.textContent = count;
-            else if (count > 0) tab.insertAdjacentHTML('beforeend', ` <span class="tab-count">${count}</span>`);
-        });
-    } catch (_) {}
+    renderTabCounts();
     try {
         const credentials = currentFilter === -2
             ? await GetFavorites(currentKeyword)

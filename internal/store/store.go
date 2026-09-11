@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"password/internal/model"
@@ -30,10 +31,29 @@ CREATE TABLE IF NOT EXISTS credentials (
     updated_at  DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS app_state (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    fail_count    INTEGER NOT NULL DEFAULT 0,
+    locked_until  TEXT NOT NULL DEFAULT ''
+);
+
 CREATE INDEX IF NOT EXISTS idx_credentials_type ON credentials(type);
 CREATE INDEX IF NOT EXISTS idx_credentials_name ON credentials(name);
 CREATE INDEX IF NOT EXISTS idx_credentials_favorite ON credentials(is_favorite);
 `
+
+// escapeLike 转义 SQL LIKE 中的通配符（% _ \），配合 ESCAPE '\' 使用
+func escapeLike(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '\\', '%', '_':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
 
 type Store struct {
 	db *sql.DB
@@ -195,8 +215,8 @@ func (s *Store) ListCredentials(credType *model.CredentialType, keyword string) 
 	}
 
 	if keyword != "" {
-		query += " AND (name LIKE ? OR url LIKE ? OR username LIKE ?)"
-		kw := "%" + keyword + "%"
+		query += " AND (name LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')"
+		kw := "%" + escapeLike(keyword) + "%"
 		args = append(args, kw, kw, kw)
 	}
 
@@ -225,11 +245,19 @@ func (s *Store) ListCredentials(credType *model.CredentialType, keyword string) 
 }
 
 func (s *Store) ToggleFavorite(id int64) error {
-	_, err := s.db.Exec(
-		"UPDATE credentials SET is_favorite = 1 - is_favorite, updated_at = datetime('now','localtime') WHERE id = ?",
-		id,
+	now := time.Now()
+	result, err := s.db.Exec(
+		"UPDATE credentials SET is_favorite = 1 - is_favorite, updated_at = ? WHERE id = ?",
+		now, id,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return errors.New("凭证不存在")
+	}
+	return nil
 }
 
 func (s *Store) GetAllCredentials() ([]model.Credential, error) {
@@ -296,8 +324,8 @@ func (s *Store) ListFavorites(keyword string) ([]model.Credential, error) {
 	args := []interface{}{}
 
 	if keyword != "" {
-		query += " AND (name LIKE ? OR url LIKE ? OR username LIKE ?)"
-		kw := "%" + keyword + "%"
+		query += " AND (name LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')"
+		kw := "%" + escapeLike(keyword) + "%"
 		args = append(args, kw, kw, kw)
 	}
 
@@ -323,4 +351,44 @@ func (s *Store) ListFavorites(keyword string) ([]model.Credential, error) {
 	}
 
 	return credentials, rows.Err()
+}
+
+// UnlockState 持久化的暴力破解防护状态
+type UnlockState struct {
+	FailCount   int
+	LockedUntil time.Time // 零值表示未锁定
+}
+
+// GetUnlockState 读取持久化的解锁失败状态
+func (s *Store) GetUnlockState() (*UnlockState, error) {
+	var st UnlockState
+	var lockedStr string
+	err := s.db.QueryRow(
+		"SELECT fail_count, locked_until FROM app_state WHERE id = 1",
+	).Scan(&st.FailCount, &lockedStr)
+	if err == sql.ErrNoRows {
+		return &UnlockState{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if lockedStr != "" {
+		if t, err := time.Parse("2006-01-02 15:04:05", lockedStr); err == nil {
+			st.LockedUntil = t
+		}
+	}
+	return &st, nil
+}
+
+// SetUnlockState 持久化解锁失败状态
+func (s *Store) SetUnlockState(st *UnlockState) error {
+	var lockedStr string
+	if !st.LockedUntil.IsZero() {
+		lockedStr = st.LockedUntil.Format("2006-01-02 15:04:05")
+	}
+	_, err := s.db.Exec(
+		"INSERT OR REPLACE INTO app_state (id, fail_count, locked_until) VALUES (1, ?, ?)",
+		st.FailCount, lockedStr,
+	)
+	return err
 }

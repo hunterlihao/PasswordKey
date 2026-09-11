@@ -2,6 +2,7 @@ package settings
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -24,7 +25,9 @@ func Load(dir string) (*Settings, error) {
 
 	var s Settings
 	if err := json.Unmarshal(data, &s); err != nil {
-		return &Settings{}, nil
+		// 配置文件损坏时报错，避免静默返回空配置导致误判 dbPath 为空、
+		// 进而引导用户重新设置主密钥、覆盖原有自定义路径的数据库
+		return nil, fmt.Errorf("配置文件解析失败（已损坏）: %w", err)
 	}
 	return &s, nil
 }

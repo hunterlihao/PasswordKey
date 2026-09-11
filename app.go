@@ -21,19 +21,38 @@ import (
 )
 
 type App struct {
-	ctx              context.Context
-	store            *store.Store
-	key              []byte
-	mu               sync.RWMutex
-	unlockFailCount  int
-	unlockLockedUntil time.Time
-	settingsDir      string
-	dbPath           string
-	settings         *settings.Settings
+	ctx               context.Context
+	store             *store.Store
+	key               []byte
+	mu                sync.RWMutex
+	settingsDir       string
+	dbPath            string
+	settings          *settings.Settings
 }
 
 func NewApp() *App {
 	return &App{}
+}
+
+// withKey 在已解锁状态下获取密钥副本并执行 fn，执行结束后清零副本，
+// 避免调用方持有与 a.key 共享底层数组的切片头、
+// 在 RUnlock 后被并发 Lock() 清零导致的 TOCTOU。
+func (a *App) withKey(fn func(key []byte) error) error {
+	a.mu.RLock()
+	src := a.key
+	a.mu.RUnlock()
+	if src == nil {
+		return errors.New("未解锁")
+	}
+	// 拷贝独立副本，与 a.key 底层数组解耦
+	key := make([]byte, len(src))
+	copy(key, src)
+	defer func() {
+		for i := range key {
+			key[i] = 0
+		}
+	}()
+	return fn(key)
 }
 
 func validateCredential(c *model.Credential) error {
@@ -150,32 +169,31 @@ func (a *App) ChangeDbPath() (string, error) {
 		return a.dbPath, nil
 	}
 
-	// 复制当前数据库到新路径
-	src, err := os.Open(a.dbPath)
-	if err != nil {
-		return "", fmt.Errorf("无法读取当前数据库: %w", err)
-	}
-	defer src.Close()
-
-	dst, err := os.Create(filePath)
-	if err != nil {
-		return "", fmt.Errorf("无法创建目标文件: %w", err)
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, src); err != nil {
-		return "", fmt.Errorf("复制数据库失败: %w", err)
-	}
-	dst.Close()
-	src.Close()
-
-	// 关闭当前连接，打开新位置
+	// 先关闭当前连接，触发 WAL checkpoint，确保 -wal 文件中的事务落盘，
+	// 避免只复制 data.db 而丢失尚未 checkpoint 的写入
 	a.store.Close()
+
+	// 复制数据库及配套的 -wal / -shm 文件
+	if err := copyDbFiles(a.dbPath, filePath); err != nil {
+		// 复制失败：回滚——重新打开原路径
+		if oldStore, openErr := store.New(a.dbPath); openErr == nil {
+			a.store = oldStore
+		} else {
+			// 回滚也失败：明确报错而非吞掉，避免 a.store 变成 nil 后续 panic
+			return "", fmt.Errorf("复制数据库失败且回滚打开原库也失败: 复制错误=%v, 回滚错误=%v", err, openErr)
+		}
+		return "", fmt.Errorf("无法复制数据库: %w", err)
+	}
+
+	// 打开新位置的数据库
 	newStore, err := store.New(filePath)
 	if err != nil {
 		// 回滚：重新打开原路径
-		oldStore, _ := store.New(a.dbPath)
-		a.store = oldStore
+		if oldStore, openErr := store.New(a.dbPath); openErr == nil {
+			a.store = oldStore
+		} else {
+			return "", fmt.Errorf("新数据库打开失败且回滚打开原库也失败: 打开错误=%v, 回滚错误=%v", err, openErr)
+		}
 		return "", fmt.Errorf("新数据库打开失败: %w", err)
 	}
 	a.store = newStore
@@ -200,29 +218,31 @@ func (a *App) ResetDbPath() error {
 		return errors.New("已经是默认路径")
 	}
 
+	// 先关闭当前连接，触发 WAL checkpoint
+	a.store.Close()
+
 	// 如果默认位置没有 db 文件，从当前位置复制过去
 	if _, err := os.Stat(defaultPath); os.IsNotExist(err) {
-		src, err := os.Open(a.dbPath)
-		if err != nil {
-			return fmt.Errorf("无法读取当前数据库: %w", err)
+		if copyErr := copyDbFiles(a.dbPath, defaultPath); copyErr != nil {
+			// 复制失败：回滚——重新打开原路径
+			if oldStore, openErr := store.New(a.dbPath); openErr == nil {
+				a.store = oldStore
+			} else {
+				return fmt.Errorf("复制到默认路径失败且回滚打开原库也失败: 复制错误=%v, 回滚错误=%v", copyErr, openErr)
+			}
+			return fmt.Errorf("无法复制数据库到默认路径: %w", copyErr)
 		}
-		defer src.Close()
-
-		dst, err := os.Create(defaultPath)
-		if err != nil {
-			return fmt.Errorf("无法创建默认路径文件: %w", err)
-		}
-		if _, err := io.Copy(dst, src); err != nil {
-			dst.Close()
-			return fmt.Errorf("复制数据库失败: %w", err)
-		}
-		dst.Close()
 	}
 
-	// 关闭当前连接，打开默认路径
-	a.store.Close()
+	// 打开默认路径
 	newStore, err := store.New(defaultPath)
 	if err != nil {
+		// 回滚：重新打开原路径
+		if oldStore, openErr := store.New(a.dbPath); openErr == nil {
+			a.store = oldStore
+		} else {
+			return fmt.Errorf("默认数据库打开失败且回滚打开原库也失败: 打开错误=%v, 回滚错误=%v", err, openErr)
+		}
 		return fmt.Errorf("默认数据库打开失败: %w", err)
 	}
 	a.store = newStore
@@ -234,6 +254,64 @@ func (a *App) ResetDbPath() error {
 		return fmt.Errorf("设置保存失败: %w", err)
 	}
 	return nil
+}
+
+// copyDbFiles 复制 SQLite 数据库主文件及配套的 -wal / -shm 文件，
+// 并将副本权限设为 0600（仅所有者可读写），避免密码库副本被同机其他用户读取。
+func copyDbFiles(srcPath, dstPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("无法读取当前数据库: %w", err)
+	}
+	defer src.Close()
+
+	// 用 0600 创建目标文件，而非默认的 0666
+	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("无法创建目标文件: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("复制数据库失败: %w", err)
+	}
+	if err := dst.Close(); err != nil {
+		return fmt.Errorf("关闭目标文件失败: %w", err)
+	}
+
+	// 复制 -wal / -shm（存在时）；这些文件携带尚未 checkpoint 的事务
+	for _, suffix := range []string{"-wal", "-shm"} {
+		// walPath 是检查源文件是否存在
+		walSrc := srcPath + suffix
+		if _, err := os.Stat(walSrc); err != nil {
+			continue // 文件不存在，跳过
+		}
+		if err := copyFile0600(walSrc, dstPath+suffix); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// copyFile0600 复制单个文件并以 0600 权限落盘
+func copyFile0600(srcPath, dstPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+	return dst.Close()
 }
 
 func getAppDataDir() (string, error) {
@@ -296,12 +374,13 @@ func (a *App) Unlock(password string) error {
 		return errors.New("数据库未初始化")
 	}
 
-	// 服务端暴力破解防护
-	a.mu.RLock()
-	locked := time.Now().Before(a.unlockLockedUntil)
-	remaining := int(a.unlockLockedUntil.Sub(time.Now()).Seconds())
-	a.mu.RUnlock()
-	if locked {
+	// 服务端暴力破解防护（状态持久化到数据库，重启不丢失）
+	st, err := a.store.GetUnlockState()
+	if err != nil {
+		return fmt.Errorf("读取锁定状态失败: %w", err)
+	}
+	if !st.LockedUntil.IsZero() && time.Now().Before(st.LockedUntil) {
+		remaining := int(st.LockedUntil.Sub(time.Now()).Seconds())
 		return fmt.Errorf("已锁定，请 %d 秒后再试", remaining)
 	}
 
@@ -314,22 +393,25 @@ func (a *App) Unlock(password string) error {
 
 	_, err = crypto.Decrypt(key, mc.EncryptedVerify)
 	if err != nil {
-		a.mu.Lock()
-		a.unlockFailCount++
-		if a.unlockFailCount >= 5 {
-			a.unlockLockedUntil = time.Now().Add(30 * time.Second)
-			a.unlockFailCount = 0
-			a.mu.Unlock()
+		// 解锁失败：累加失败计数并持久化
+		st.FailCount++
+		if st.FailCount >= 5 {
+			st.LockedUntil = time.Now().Add(30 * time.Second)
+			st.FailCount = 0
+			_ = a.store.SetUnlockState(st)
 			return errors.New("连续错误 5 次，已锁定 30 秒")
 		}
-		a.mu.Unlock()
+		_ = a.store.SetUnlockState(st)
 		return errors.New("主密钥错误")
 	}
 
+	// 成功：清零失败状态并持久化
+	st.FailCount = 0
+	st.LockedUntil = time.Time{}
+	_ = a.store.SetUnlockState(st)
+
 	a.mu.Lock()
 	a.key = key
-	a.unlockFailCount = 0
-	a.unlockLockedUntil = time.Time{}
 	a.mu.Unlock()
 	return nil
 }
@@ -396,20 +478,14 @@ func (a *App) AddCredential(c model.Credential) error {
 		return err
 	}
 
-	a.mu.RLock()
-	key := a.key
-	a.mu.RUnlock()
-	if key == nil {
-		return errors.New("未解锁")
-	}
-
-	encrypted, err := crypto.Encrypt(key, []byte(c.Secret))
-	if err != nil {
-		return err
-	}
-	c.Secret = string(encrypted)
-
-	return a.store.CreateCredential(&c)
+	return a.withKey(func(key []byte) error {
+		encrypted, err := crypto.Encrypt(key, []byte(c.Secret))
+		if err != nil {
+			return err
+		}
+		c.Secret = string(encrypted)
+		return a.store.CreateCredential(&c)
+	})
 }
 
 // UpdateCredential 更新凭证
@@ -418,20 +494,14 @@ func (a *App) UpdateCredential(c model.Credential) error {
 		return err
 	}
 
-	a.mu.RLock()
-	key := a.key
-	a.mu.RUnlock()
-	if key == nil {
-		return errors.New("未解锁")
-	}
-
-	encrypted, err := crypto.Encrypt(key, []byte(c.Secret))
-	if err != nil {
-		return err
-	}
-	c.Secret = string(encrypted)
-
-	return a.store.UpdateCredential(&c)
+	return a.withKey(func(key []byte) error {
+		encrypted, err := crypto.Encrypt(key, []byte(c.Secret))
+		if err != nil {
+			return err
+		}
+		c.Secret = string(encrypted)
+		return a.store.UpdateCredential(&c)
+	})
 }
 
 // DeleteCredential 删除凭证
@@ -473,37 +543,26 @@ func (a *App) GetDecryptedSecretDirect(id int64) (string, error) {
 		return "", errors.New("数据库未初始化")
 	}
 
-	a.mu.RLock()
-	key := a.key
-	a.mu.RUnlock()
-	if key == nil {
-		return "", errors.New("未解锁")
-	}
-
-	c, err := a.store.GetCredential(id)
-	if err != nil {
-		return "", err
-	}
-
-	plaintext, err := crypto.Decrypt(key, []byte(c.Secret))
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
+	var result string
+	err := a.withKey(func(key []byte) error {
+		c, err := a.store.GetCredential(id)
+		if err != nil {
+			return err
+		}
+		plaintext, err := crypto.Decrypt(key, []byte(c.Secret))
+		if err != nil {
+			return err
+		}
+		result = string(plaintext)
+		return nil
+	})
+	return result, err
 }
 
 // GetDecryptedSecret 解密密码（需二次验证）
 func (a *App) GetDecryptedSecret(id int64, verifyPassword string) (string, error) {
 	if a.store == nil {
 		return "", errors.New("数据库未初始化")
-	}
-
-	a.mu.RLock()
-	key := a.key
-	a.mu.RUnlock()
-	if key == nil {
-		return "", errors.New("未解锁")
 	}
 
 	mc, err := a.store.GetMasterConfig()
@@ -517,17 +576,20 @@ func (a *App) GetDecryptedSecret(id int64, verifyPassword string) (string, error
 		return "", errors.New("主密钥验证失败")
 	}
 
-	c, err := a.store.GetCredential(id)
-	if err != nil {
-		return "", err
-	}
-
-	plaintext, err := crypto.Decrypt(key, []byte(c.Secret))
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
+	var result string
+	err = a.withKey(func(key []byte) error {
+		c, err := a.store.GetCredential(id)
+		if err != nil {
+			return err
+		}
+		plaintext, err := crypto.Decrypt(key, []byte(c.Secret))
+		if err != nil {
+			return err
+		}
+		result = string(plaintext)
+		return nil
+	})
+	return result, err
 }
 
 // GetFavorites 获取收藏列表
@@ -584,6 +646,9 @@ func (a *App) ChangeMasterPassword(oldPassword, newPassword string) error {
 	oldKey := crypto.DeriveKey(oldPassword, mc.Salt)
 	_, err = crypto.Decrypt(oldKey, mc.EncryptedVerify)
 	if err != nil {
+		for i := range oldKey {
+			oldKey[i] = 0
+		}
 		return errors.New("旧密码错误")
 	}
 	defer func() {
@@ -598,6 +663,16 @@ func (a *App) ChangeMasterPassword(oldPassword, newPassword string) error {
 		return err
 	}
 	newKey := crypto.DeriveKey(newPassword, newSalt)
+
+	// committed 标记事务是否成功；失败时必须清零 newKey，避免 32 字节密钥泄露
+	committed := false
+	defer func() {
+		if !committed {
+			for i := range newKey {
+				newKey[i] = 0
+			}
+		}
+	}()
 
 	// 在事务中重新加密所有凭证并更新主配置
 	err = a.store.WithTransaction(func(tx *sql.Tx) error {
@@ -634,6 +709,10 @@ func (a *App) ChangeMasterPassword(oldPassword, newPassword string) error {
 			if err != nil {
 				return fmt.Errorf("重新加密凭证 ID=%d 失败: %w", cs.id, err)
 			}
+			// 重新加密后立即清零明文
+			for i := range plaintext {
+				plaintext[i] = 0
+			}
 			_, err = tx.Exec(
 				"UPDATE credentials SET secret=?, updated_at=datetime('now','localtime') WHERE id=?",
 				newEncrypted, cs.id,
@@ -663,8 +742,16 @@ func (a *App) ChangeMasterPassword(oldPassword, newPassword string) error {
 		return err
 	}
 
-	// 更新内存中的密钥
+	// 事务成功提交：newKey 转交 a.key，不再清零
+	committed = true
+
+	// 更新内存中的密钥（先清零旧 key，再赋新值）
 	a.mu.Lock()
+	if a.key != nil {
+		for i := range a.key {
+			a.key[i] = 0
+		}
+	}
 	a.key = newKey
 	a.mu.Unlock()
 	return nil
@@ -672,11 +759,8 @@ func (a *App) ChangeMasterPassword(oldPassword, newPassword string) error {
 
 // ExportData 导出数据 (format: "json" or "excel")
 func (a *App) ExportData(format string) (string, error) {
-	a.mu.RLock()
-	key := a.key
-	a.mu.RUnlock()
-	if key == nil {
-		return "", errors.New("未解锁")
+	if a.store == nil {
+		return "", errors.New("数据库未初始化")
 	}
 
 	var ext, filterName, filterPattern string
@@ -708,13 +792,19 @@ func (a *App) ExportData(format string) (string, error) {
 
 	var exportCreds []export.ExportCredential
 	var failCount int
-	for _, c := range credentials {
-		plaintext, err := crypto.Decrypt(key, []byte(c.Secret))
-		if err != nil {
-			failCount++
-			continue
+	exportErr := a.withKey(func(key []byte) error {
+		for _, c := range credentials {
+			plaintext, err := crypto.Decrypt(key, []byte(c.Secret))
+			if err != nil {
+				failCount++
+				continue
+			}
+			exportCreds = append(exportCreds, export.ExportCredentialToExport(c, string(plaintext)))
 		}
-		exportCreds = append(exportCreds, export.ExportCredentialToExport(c, string(plaintext)))
+		return nil
+	})
+	if exportErr != nil {
+		return "", exportErr
 	}
 
 	if format == "excel" {
@@ -735,10 +825,10 @@ func (a *App) ExportData(format string) (string, error) {
 
 // ImportData 导入数据
 func (a *App) ImportData() (int, error) {
-	a.mu.RLock()
-	key := a.key
-	a.mu.RUnlock()
-	if key == nil {
+	if a.store == nil {
+		return 0, errors.New("数据库未初始化")
+	}
+	if !a.IsUnlocked() {
 		return 0, errors.New("未解锁")
 	}
 
@@ -766,22 +856,28 @@ func (a *App) ImportData() (int, error) {
 
 	count := 0
 	var failCount int
-	for _, ec := range exportCreds {
-		if ec.Name == "" || ec.Secret == "" {
-			continue
+	importErr := a.withKey(func(key []byte) error {
+		for _, ec := range exportCreds {
+			if ec.Name == "" || ec.Secret == "" {
+				continue
+			}
+			c := export.ExportCredentialToModel(ec)
+			encrypted, err := crypto.Encrypt(key, []byte(c.Secret))
+			if err != nil {
+				failCount++
+				continue
+			}
+			c.Secret = string(encrypted)
+			if err := a.store.CreateCredential(&c); err != nil {
+				failCount++
+				continue
+			}
+			count++
 		}
-		c := export.ExportCredentialToModel(ec)
-		encrypted, err := crypto.Encrypt(key, []byte(c.Secret))
-		if err != nil {
-			failCount++
-			continue
-		}
-		c.Secret = string(encrypted)
-		if err := a.store.CreateCredential(&c); err != nil {
-			failCount++
-			continue
-		}
-		count++
+		return nil
+	})
+	if importErr != nil {
+		return 0, importErr
 	}
 
 	if failCount > 0 {
@@ -792,11 +888,8 @@ func (a *App) ImportData() (int, error) {
 
 // ExportSingle 导出单条凭证 (format: "json" or "excel")
 func (a *App) ExportSingle(id int64, format string) (string, error) {
-	a.mu.RLock()
-	key := a.key
-	a.mu.RUnlock()
-	if key == nil {
-		return "", errors.New("未解锁")
+	if a.store == nil {
+		return "", errors.New("数据库未初始化")
 	}
 
 	c, err := a.store.GetCredential(id)
@@ -804,7 +897,15 @@ func (a *App) ExportSingle(id int64, format string) (string, error) {
 		return "", err
 	}
 
-	plaintext, err := crypto.Decrypt(key, []byte(c.Secret))
+	var plaintext string
+	err = a.withKey(func(key []byte) error {
+		pt, err := crypto.Decrypt(key, []byte(c.Secret))
+		if err != nil {
+			return err
+		}
+		plaintext = string(pt)
+		return nil
+	})
 	if err != nil {
 		return "", err
 	}
@@ -831,7 +932,7 @@ func (a *App) ExportSingle(id int64, format string) (string, error) {
 		return "", errors.New("已取消")
 	}
 
-	ec := export.ExportCredentialToExport(*c, string(plaintext))
+	ec := export.ExportCredentialToExport(*c, plaintext)
 
 	if format == "excel" {
 		err = export.ExportExcel([]export.ExportCredential{ec}, filePath)

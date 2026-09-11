@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 type CredentialType int
 
@@ -72,50 +75,69 @@ const (
 )
 
 func CheckPasswordStrength(password string) PasswordStrength {
-	score := 0
-	length := len(password)
+	// 基于熵估计的强度判定：根据实际使用的字符集大小计算 password 的最大熵
+	// log2(poolSize) * length，再结合长度门槛分级
+	const (
+		entropyWeak   = 40.0  // < 40 bits
+		entropyMedium = 60.0  // 40 ~ 60 bits
+		entropyStrong = 80.0  // >= 80 bits 为强
+	)
 
-	if length >= 8 {
-		score++
-	}
-	if length >= 12 {
-		score++
-	}
-	if length >= 16 {
-		score++
-	}
-
-	hasLower, hasUpper, hasDigit, hasSpecial := false, false, false, false
-	for _, c := range password {
+	hasLower, hasUpper, hasDigit, hasSpecialASCII, hasOther := false, false, false, false, false
+	for _, r := range password {
 		switch {
-		case c >= 'a' && c <= 'z':
+		case r >= 'a' && r <= 'z':
 			hasLower = true
-		case c >= 'A' && c <= 'Z':
+		case r >= 'A' && r <= 'Z':
 			hasUpper = true
-		case c >= '0' && c <= '9':
+		case r >= '0' && r <= '9':
 			hasDigit = true
+		case r >= 0x21 && r <= 0x7E:
+			// 可打印 ASCII 标点（排除字母数字）
+			hasSpecialASCII = true
 		default:
-			hasSpecial = true
+			// 非 ASCII 字符（含中文等）统一计入一个"其他"池
+			hasOther = true
 		}
 	}
 
+	poolSize := 0
 	if hasLower {
-		score++
+		poolSize += 26
 	}
 	if hasUpper {
-		score++
+		poolSize += 26
 	}
 	if hasDigit {
-		score++
+		poolSize += 10
 	}
-	if hasSpecial {
-		score++
+	if hasSpecialASCII {
+		poolSize += 33
+	}
+	if hasOther {
+		// 非 ASCII 字符池至少按 94 估算（保守）
+		poolSize += 94
 	}
 
+	length := len(password)
+	if poolSize == 0 || length == 0 {
+		return StrengthWeak
+	}
+
+	// 单字符熵
+	bitsPerChar := math.Log2(float64(poolSize))
+	entropy := bitsPerChar * float64(length)
+
 	switch {
-	case score >= 6:
+	case entropy >= entropyStrong:
 		return StrengthStrong
-	case score >= 4:
+	case entropy >= entropyMedium:
+		return StrengthMedium
+	case entropy >= entropyWeak:
+		// 达到弱门槛但低于中门槛，再按短密码进一步压制
+		if length < 8 {
+			return StrengthWeak
+		}
 		return StrengthMedium
 	default:
 		return StrengthWeak

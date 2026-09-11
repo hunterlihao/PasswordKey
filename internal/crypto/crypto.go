@@ -142,11 +142,13 @@ func GenerateRandomPassword(length int, useUpper, useDigit, useSpecial bool) (st
 		}
 	}
 
-	// 打乱顺序
+	// 打乱顺序（Fisher-Yates，使用 crypto/rand）
 	for i := len(password) - 1; i > 0; i-- {
 		j, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
 		if err != nil {
-			continue
+			// crypto/rand 失败属于致命错误，不应静默跳过——
+			// 跳过会导致保证类别位固定在密码开头，削弱随机性
+			return "", err
 		}
 		password[i], password[j.Int64()] = password[j.Int64()], password[i]
 	}
