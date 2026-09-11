@@ -57,13 +57,6 @@ impl From<CryptoError> for String {
     }
 }
 
-/// 操作系统级随机字节（等价于 Go 的 crypto/rand）
-pub fn random_bytes(len: usize) -> Result<Vec<u8>, CryptoError> {
-    let mut buf = vec![0u8; len];
-    getrandom::fill(&mut buf).map_err(|e| CryptoError::Random(e.to_string()))?;
-    Ok(buf)
-}
-
 /// 生成 16 字节随机盐
 pub fn generate_salt() -> Result<[u8; SALT_LENGTH], CryptoError> {
     let mut salt = [0u8; SALT_LENGTH];
@@ -169,7 +162,7 @@ pub fn generate_random_password(
 
     // 保证每种启用的字符类别至少出现一次
     let mut pos = 0usize;
-    let mut ensure_chars = |pool: &str, password: &mut Vec<u8>, pos: &mut usize| -> Result<(), CryptoError> {
+    let ensure_chars = |pool: &str, password: &mut Vec<u8>, pos: &mut usize| -> Result<(), CryptoError> {
         if *pos >= length {
             return Ok(());
         }

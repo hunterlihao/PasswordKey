@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn master_config_and_unlock_state() {
-        let (mut store, _dir) = temp_store("master");
+        let (store, _dir) = temp_store("master");
         store.set_master_config(&[1, 2, 3], &[4, 5, 6]).unwrap();
         let mc = store.get_master_config().unwrap();
         assert_eq!(mc.salt, vec![1, 2, 3]);

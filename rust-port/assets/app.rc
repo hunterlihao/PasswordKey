@@ -1,5 +1,8 @@
 #include <windows.h>
 
+/* 本文件以 UTF-8 保存，需显式声明代码页，否则 rc.exe 会把中文当成乱码 */
+#pragma code_page(65001)
+
 /* 说明：路径以 crate 根目录为基准（cargo 运行 build.rs 时的工作目录） */
 
 /* 应用图标（任务栏 / 资源管理器） */

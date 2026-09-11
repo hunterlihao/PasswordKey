@@ -13,11 +13,6 @@ pub fn now_text() -> String {
     Local::now().format("%Y-%m-%d %H:%M:%S%.3f%:z").to_string()
 }
 
-/// 当前时间（用于锁定时间比较）
-pub fn now_local() -> DateTime<Local> {
-    Local::now()
-}
-
 /// 数据库时间文本 -> 带偏移的时间
 pub fn parse_db_time(raw: &str) -> Option<DateTime<FixedOffset>> {
     let s = raw.trim();
