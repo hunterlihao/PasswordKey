@@ -1,0 +1,38 @@
+#include <windows.h>
+
+/* 说明：路径以 crate 根目录为基准（cargo 运行 build.rs 时的工作目录） */
+
+/* 应用图标（任务栏 / 资源管理器） */
+1 ICON "assets/icon.ico"
+
+/* 应用清单：DPI 感知 + 以调用者权限运行（不弹 UAC） */
+1 24 "assets/app.manifest"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     2,0,0,0
+PRODUCTVERSION  2,0,0,0
+FILEFLAGSMASK   0x3fL
+FILEFLAGS       0x0L
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName",      "liyuanhao"
+            VALUE "FileDescription",  "密码管理器 (Rust 便携版)"
+            VALUE "FileVersion",      "2.0.0"
+            VALUE "InternalName",     "PasswordManager"
+            VALUE "LegalCopyright",   "Copyright (C) 2025 liyuanhao"
+            VALUE "OriginalFilename", "PasswordManager.exe"
+            VALUE "ProductName",      "密码管理器"
+            VALUE "ProductVersion",   "2.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END

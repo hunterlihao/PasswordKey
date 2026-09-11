@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>密码管理器</title>
+    <style>html,body{margin:0;padding:0;background:#f5f0e8;overflow:hidden}</style>
+  <script type="module">
+(function(){const n=document.createElement("link").relList;if(n&&n.supports&&n.supports("modulepreload"))return;for(const a of document.querySelectorAll('link[rel="modulepreload"]'))o(a);new MutationObserver(a=>{for(const l of a)if(l.type==="childList")for(const u of l.addedNodes)u.tagName==="LINK"&&u.rel==="modulepreload"&&o(u)}).observe(document,{childList:!0,subtree:!0});function t(a){const l={};return a.integrity&&(l.integrity=a.integrity),a.referrerpolicy&&(l.referrerPolicy=a.referrerpolicy),a.crossorigin==="use-credentials"?l.credentials="include":a.crossorigin==="anonymous"?l.credentials="omit":l.credentials="same-origin",l}function o(a){if(a.ep)return;a.ep=!0;const l=t(a);fetch(a.href,l)}})();function G(e){return window.go.main.App.AddCredential(e)}function V(){return window.go.main.App.ChangeDbPath()}function _(e,n){return window.go.main.App.ChangeMasterPassword(e,n)}function O(e){return window.go.main.App.CheckPasswordStrength(e)}function K(e){return window.go.main.App.DeleteCredential(e)}function R(e){return window.go.main.App.DeleteCredentials(e)}function j(){return window.go.main.App.DownloadExcelTemplate()}function J(){return window.go.main.App.DownloadJSONTemplate()}function U(e){return window.go.main.App.ExportData(e)}function z(e,n){return window.go.main.App.ExportSingle(e,n)}function Y(e){return window.go.main.App.GeneratePassword(e)}function P(){return window.go.main.App.GetCredentialCounts()}function I(e){return window.go.main.App.GetCredentialViewById(e)}function W(e,n){return window.go.main.App.GetCredentials(e,n)}function Q(){return window.go.main.App.GetDbPath()}function D(e,n){return window.go.main.App.GetDecryptedSecret(e,n)}function X(e){return window.go.main.App.GetDecryptedSecretDirect(e)}function Z(e){return window.go.main.App.GetFavorites(e)}function ee(){return window.go.main.App.ImportData()}function te(){return window.go.main.App.IsMasterSet()}function ne(){return window.go.main.App.Lock()}function oe(){return window.go.main.App.ResetDbPath()}function ae(e){return window.go.main.App.SetupMaster(e)}function ie(e){return window.go.main.App.ToggleFavorite(e)}function se(e){return window.go.main.App.Unlock(e)}function le(e){return window.go.main.App.UpdateCredential(e)}let p=-1,C="",T=null,L={},S={},m=new Set,h=!1,k=null;const ce=2600,re=800,de=600,ue=16,pe=3e4,me=300,w={0:{icon:"\u{1F310}",badge:"\u6D4F\u89C8\u5668",title:"\u6D4F\u89C8\u5668\u5BC6\u7801",subtitle:"\u4FDD\u5B58\u7F51\u7AD9\u7684\u8D26\u53F7\u548C\u5BC6\u7801",editSubtitle:"\u4FEE\u6539\u7F51\u7AD9\u767B\u5F55\u4FE1\u606F",nameLabel:"\u540D\u79F0",namePlaceholder:"\u4F8B\u5982: GitHub, Google",fields:[{id:"url",label:"\u7F51\u5740",placeholder:"https://github.com",type:"input"},{id:"username",label:"\u7528\u6237\u540D",placeholder:"your@email.com",type:"input"},{id:"secret",label:"\u5BC6\u7801",placeholder:"\u8F93\u5165\u5BC6\u7801",editPlaceholder:"\u7559\u7A7A\u5219\u4E0D\u4FEE\u6539",type:"password",generate:!0,strength:!0}],notesPlaceholder:"\u6DFB\u52A0\u5907\u6CE8\u4FE1\u606F..."},1:{icon:"\u{1F511}",badge:"API Key",title:"API Key",subtitle:"\u4FDD\u5B58\u670D\u52A1\u5BC6\u94A5\u6216\u8BBF\u95EE\u4EE4\u724C",editSubtitle:"\u4FEE\u6539\u5BC6\u94A5\u4FE1\u606F",nameLabel:"\u540D\u79F0",namePlaceholder:"\u4F8B\u5982: OpenAI, AWS, Stripe",fields:[{id:"secret",label:"API Key",placeholder:"\u7C98\u8D34\u60A8\u7684 API Key",editPlaceholder:"\u7559\u7A7A\u5219\u4E0D\u4FEE\u6539",type:"textarea",rows:4}],notesPlaceholder:"\u6DFB\u52A0\u5907\u6CE8\u4FE1\u606F\uFF0C\u4F8B\u5982\u7528\u9014\u3001\u6709\u6548\u671F\u7B49..."},2:{icon:"\u{1F510}",badge:"SSH",title:"SSH \u5BC6\u94A5",subtitle:"\u4FDD\u5B58 SSH \u79C1\u94A5\u548C\u8FDE\u63A5\u4FE1\u606F",editSubtitle:"\u4FEE\u6539 SSH \u8FDE\u63A5\u4FE1\u606F",nameLabel:"\u8FDE\u63A5\u540D\u79F0",namePlaceholder:"\u4F8B\u5982: \u751F\u4EA7\u670D\u52A1\u5668, GitHub SSH",fields:[{id:"url",label:"\u4E3B\u673A\u5730\u5740",placeholder:"192.168.1.100 \u6216 github.com",type:"input"},{id:"username",label:"\u7528\u6237\u540D",placeholder:"root, ubuntu, git",type:"input"},{id:"secret",label:"\u79C1\u94A5",placeholder:"\u7C98\u8D34\u79C1\u94A5\u5185\u5BB9",editPlaceholder:"\u7559\u7A7A\u5219\u4E0D\u4FEE\u6539",type:"textarea",rows:8}],notesPlaceholder:"\u7AEF\u53E3\u3001\u8BA4\u8BC1\u65B9\u5F0F\u3001\u7528\u9014\u7B49..."},3:{icon:"\u{1F4DD}",badge:"\u7B14\u8BB0",title:"\u5B89\u5168\u7B14\u8BB0",subtitle:"\u4FDD\u5B58\u52A0\u5BC6\u7684\u654F\u611F\u6587\u672C\u4FE1\u606F",editSubtitle:"\u4FEE\u6539\u7B14\u8BB0\u5185\u5BB9",nameLabel:"\u6807\u9898",namePlaceholder:"\u4F8B\u5982: WiFi\u5BC6\u7801, \u4FDD\u9669\u67DC\u5BC6\u7801",fields:[{id:"secret",label:"\u7B14\u8BB0\u5185\u5BB9",placeholder:"\u8F93\u5165\u9700\u8981\u52A0\u5BC6\u4FDD\u5B58\u7684\u6587\u672C\u5185\u5BB9",editPlaceholder:"\u7559\u7A7A\u5219\u4E0D\u4FEE\u6539",type:"textarea",rows:8}],notesPlaceholder:"\u6DFB\u52A0\u5907\u6CE8\u4FE1\u606F..."},4:{icon:"\u{1F5C4}\uFE0F",badge:"\u6570\u636E\u5E93",title:"\u6570\u636E\u5E93\u8FDE\u63A5",subtitle:"\u4FDD\u5B58\u6570\u636E\u5E93\u8FDE\u63A5\u51ED\u636E",editSubtitle:"\u4FEE\u6539\u6570\u636E\u5E93\u8FDE\u63A5\u4FE1\u606F",nameLabel:"\u8FDE\u63A5\u540D\u79F0",namePlaceholder:"\u4F8B\u5982: MySQL \u751F\u4EA7\u5E93, Redis \u7F13\u5B58",fields:[{id:"url",label:"\u8FDE\u63A5\u5730\u5740",placeholder:"localhost:3306 \u6216 db.example.com:5432",type:"input"},{id:"username",label:"\u7528\u6237\u540D",placeholder:"admin, root",type:"input"},{id:"secret",label:"\u5BC6\u7801",placeholder:"\u8F93\u5165\u5BC6\u7801",editPlaceholder:"\u7559\u7A7A\u5219\u4E0D\u4FEE\u6539",type:"password"}],notesPlaceholder:"\u6570\u636E\u5E93\u7C7B\u578B\u3001\u7AEF\u53E3\u3001\u7528\u9014\u7B49..."},5:{icon:"\u{1F4E7}",badge:"\u90AE\u7BB1",title:"\u90AE\u7BB1\u8D26\u53F7",subtitle:"\u4FDD\u5B58\u90AE\u7BB1\u767B\u5F55\u4FE1\u606F",editSubtitle:"\u4FEE\u6539\u90AE\u7BB1\u767B\u5F55\u4FE1\u606F",nameLabel:"\u90AE\u7BB1\u540D\u79F0",namePlaceholder:"\u4F8B\u5982: Gmail, \u4F01\u4E1A\u90AE\u7BB1",fields:[{id:"url",label:"SMTP \u670D\u52A1\u5668",placeholder:"smtp.gmail.com",type:"input"},{id:"username",label:"\u90AE\u7BB1\u5730\u5740",placeholder:"user@example.com",type:"input"},{id:"secret",label:"\u5BC6\u7801/\u6388\u6743\u7801",placeholder:"\u8F93\u5165\u5BC6\u7801\u6216\u6388\u6743\u7801",editPlaceholder:"\u7559\u7A7A\u5219\u4E0D\u4FEE\u6539",type:"password"}],notesPlaceholder:"IMAP/POP3 \u670D\u52A1\u5668\u3001\u7AEF\u53E3\u7B49..."},6:{icon:"\u{1F4B3}",badge:"\u94F6\u884C\u5361",title:"\u94F6\u884C\u5361/\u4FE1\u7528\u5361",subtitle:"\u4FDD\u5B58\u94F6\u884C\u5361\u4FE1\u606F",editSubtitle:"\u4FEE\u6539\u94F6\u884C\u5361\u4FE1\u606F",nameLabel:"\u94F6\u884C\u540D\u79F0",namePlaceholder:"\u4F8B\u5982: \u62DB\u5546\u94F6\u884C, \u5DE5\u5546\u94F6\u884C\u4FE1\u7528\u5361",fields:[{id:"username",label:"\u5361\u53F7",placeholder:"6225 **** **** 1234",type:"input"},{id:"secret",label:"CVV / \u67E5\u8BE2\u5BC6\u7801",placeholder:"\u8F93\u5165 CVV \u6216\u67E5\u8BE2\u5BC6\u7801",editPlaceholder:"\u7559\u7A7A\u5219\u4E0D\u4FEE\u6539",type:"password"}],notesPlaceholder:"\u8FC7\u671F\u65E5\u671F\u3001\u6301\u5361\u4EBA\u3001\u5F00\u6237\u884C\u7B49..."}};function be(e){return(w[e]||w[0]).icon}function ve(e){return(w[e]||w[0]).badge}async function he(){const e=document.getElementById("splash");if(e){await new Promise(t=>setTimeout(t,ce));const n=e.querySelector(".lock-svg");n&&n.classList.add("unlocked"),await new Promise(t=>setTimeout(t,re)),e.classList.add("fade-out"),await new Promise(t=>setTimeout(t,de)),e.remove()}try{await te()?B():we()}catch{document.querySelector("#app").innerHTML=`
+            <div style="text-align:center;padding:60px 20px;">
+                <h2>\u5E94\u7528\u521D\u59CB\u5316\u5931\u8D25</h2>
+                <p style="margin-top:12px;color:#888;">\u8BF7\u91CD\u542F\u5E94\u7528\uFF0C\u5982\u95EE\u9898\u6301\u7EED\u8BF7\u8054\u7CFB\u5F00\u53D1\u8005\u3002</p>
+            </div>`}}function we(){document.querySelector("#app").innerHTML=`
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="logo">
+                    <div class="icon">\u{1F510}</div>
+                    <h1>\u5BC6\u7801\u7BA1\u7406\u5668</h1>
+                    <p class="subtitle">\u5B89\u5168\u5B58\u50A8\u60A8\u7684\u5BC6\u7801\u548C\u5BC6\u94A5</p>
+                </div>
+                <div class="form-group">
+                    <label>\u4E3B\u5BC6\u94A5</label>
+                    <input type="password" id="password" placeholder="\u8BBE\u7F6E\u60A8\u7684\u4E3B\u5BC6\u94A5" autocomplete="off">
+                    <div class="strength-indicator">
+                        <div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div>
+                        <span class="strength-text" id="strength-text"></span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>\u786E\u8BA4\u5BC6\u94A5</label>
+                    <input type="password" id="confirm" placeholder="\u518D\u6B21\u8F93\u5165\u4E3B\u5BC6\u94A5" autocomplete="off">
+                </div>
+                <div class="buttons">
+                    <button class="btn btn-primary" onclick="setupMaster()">\u5F00\u59CB\u4F7F\u7528</button>
+                </div>
+            </div>
+        </div>
+    `,document.getElementById("password").addEventListener("input",e=>{x(e.target.value)})}function B(){document.querySelector("#app").innerHTML=`
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="logo">
+                    <div class="icon">\u{1F510}</div>
+                    <h1>\u6B22\u8FCE\u56DE\u6765</h1>
+                    <p class="subtitle">\u8F93\u5165\u4E3B\u5BC6\u94A5\u89E3\u9501\u60A8\u7684\u5BC6\u7801\u5E93</p>
+                </div>
+                <div class="form-group">
+                    <label>\u4E3B\u5BC6\u94A5</label>
+                    <input type="password" id="password" placeholder="\u8F93\u5165\u4E3B\u5BC6\u94A5" autocomplete="off">
+                </div>
+                <div class="buttons">
+                    <button class="btn btn-primary" onclick="unlock()">\u89E3\u9501</button>
+                </div>
+            </div>
+        </div>
+    `,document.getElementById("password").addEventListener("keydown",e=>{e.key==="Enter"&&unlock()})}window.showMainView=async function(){S=await P();const e=t=>S[t]!=null?` <span class="tab-count">${S[t]}</span>`:"";document.querySelector("#app").innerHTML=`
+        <div class="app-container">
+            <div class="header">
+                <div class="header-left">
+                    <div class="header-logo">\u{1F510}</div>
+                    <span class="header-title">\u5BC6\u7801\u7BA1\u7406\u5668</span>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="search" placeholder="\u641C\u7D22\u51ED\u8BC1..." oninput="searchCredentials(this.value)">
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary btn-small" onclick="showTypeSelection()">+ \u65B0\u589E</button>
+                    <button class="btn btn-ghost btn-small" id="batch-delete-btn" onclick="toggleSelectMode()">\u6279\u91CF\u5220\u9664</button>
+                    <button class="btn btn-ghost btn-small" onclick="exportData()">\u5BFC\u51FA</button>
+                    <button class="btn btn-ghost btn-small" onclick="importData()">\u5BFC\u5165</button>
+                    <button class="btn btn-ghost btn-small" onclick="showTemplateMenu()">\u6A21\u677F</button>
+                    <button class="btn btn-ghost btn-small" onclick="showChangePasswordForm()">\u6539\u5BC6</button>
+                    <button class="btn btn-ghost btn-small" onclick="showSettings()">\u8BBE\u7F6E</button>
+                    <button class="btn btn-ghost btn-small" onclick="lockApp()">\u9501\u5C4F</button>
+                </div>
+            </div>
+            <div class="tabs">
+                <button class="tab ${p===-1?"active":""}" data-type="-1" onclick="filterCredentials(-1)">\u5168\u90E8${e(-1)}</button>
+                <button class="tab ${p===0?"active":""}" data-type="0" onclick="filterCredentials(0)">\u{1F310} \u6D4F\u89C8\u5668${e(0)}</button>
+                <button class="tab ${p===1?"active":""}" data-type="1" onclick="filterCredentials(1)">\u{1F511} API Key${e(1)}</button>
+                <button class="tab ${p===2?"active":""}" data-type="2" onclick="filterCredentials(2)">\u{1F510} SSH${e(2)}</button>
+                <button class="tab ${p===3?"active":""}" data-type="3" onclick="filterCredentials(3)">\u{1F4DD} \u7B14\u8BB0${e(3)}</button>
+                <button class="tab ${p===4?"active":""}" data-type="4" onclick="filterCredentials(4)">\u{1F5C4}\uFE0F \u6570\u636E\u5E93${e(4)}</button>
+                <button class="tab ${p===5?"active":""}" data-type="5" onclick="filterCredentials(5)">\u{1F4E7} \u90AE\u7BB1${e(5)}</button>
+                <button class="tab ${p===6?"active":""}" data-type="6" onclick="filterCredentials(6)">\u{1F4B3} \u94F6\u884C\u5361${e(6)}</button>
+                <button class="tab ${p===-2?"active":""}" data-type="-2" onclick="filterCredentials(-2)">\u2605 \u6536\u85CF${e(-2)}</button>
+            </div>
+            <div class="credential-list" id="credential-list">
+                <div class="empty-state">
+                    <div class="icon">\u23F3</div>
+                    <h3>\u52A0\u8F7D\u4E2D...</h3>
+                </div>
+            </div>
+            <div class="selection-bar" id="selection-bar" style="display:none">
+                <span id="selection-count">\u5DF2\u9009 0 \u9879</span>
+                <button class="btn btn-danger btn-small" onclick="batchDelete()">\u5220\u9664\u9009\u4E2D</button>
+                <button class="btn btn-ghost btn-small" onclick="clearSelection()">\u53D6\u6D88</button>
+            </div>
+        </div>
+    `,f();const n=document.getElementById("batch-delete-btn");n&&(n.classList.toggle("active",h),n.textContent=h?"\u53D6\u6D88\u9009\u62E9":"\u6279\u91CF\u5220\u9664"),M()};async function A(){try{S=await P(),H()}catch{}}function H(){document.querySelectorAll(".tab[data-type]").forEach(e=>{const n=parseInt(e.dataset.type),t=S[n]||0,o=e.querySelector(".tab-count");o?o.textContent=t:t>0&&e.insertAdjacentHTML("beforeend",` <span class="tab-count">${t}</span>`)})}async function f(){H();try{const e=p===-2?await Z(C):await W(p,C),n=document.getElementById("credential-list");if(!e||e.length===0){n.innerHTML=`
+                <div class="empty-state">
+                    <div class="icon">\u{1F4ED}</div>
+                    <h3>\u6682\u65E0\u51ED\u8BC1</h3>
+                    <p>\u70B9\u51FB"\u65B0\u589E"\u6309\u94AE\u6DFB\u52A0\u60A8\u7684\u7B2C\u4E00\u4E2A\u5BC6\u7801</p>
+                </div>
+            `;return}L={},e.forEach(t=>{t.notes&&(L[t.id]=t.notes)}),n.innerHTML=e.map((t,o)=>`
+            <div class="credential-item${m.has(t.id)?" selected":""}" data-id="${t.id}" style="--i:${o}" onclick="handleCredClick(${t.id}, event)">
+                <div class="credential-icon">
+                    ${be(t.type)}
+                </div>
+                <div class="credential-info">
+                    <div class="credential-header">
+                        <span class="credential-name">${r(t.name)}</span>
+                        <span class="credential-badge">${ve(t.type)}</span>
+                    </div>
+                    <div class="credential-meta">
+                        ${t.url?`<span>${r(t.url)}</span>`:""}
+                        ${t.username?`<span>${r(t.username)}</span>`:""}
+                    </div>
+                </div>
+                <div class="credential-actions" onclick="event.stopPropagation()">
+                    <button class="favorite-btn ${t.is_favorite?"active":"inactive"}" onclick="toggleFavorite(${t.id})">
+                        ${t.is_favorite?"\u2605":"\u2606"}
+                    </button>
+                    <button class="btn btn-ghost btn-small" onclick="editCredential(${t.id})">\u7F16\u8F91</button>
+                    <button class="btn btn-ghost btn-small" onclick="exportSingle(${t.id})">\u5BFC\u51FA</button>
+                    <button class="btn btn-ghost btn-small" onclick="deleteCredential(${t.id})" style="color: var(--danger)">\u5220\u9664</button>
+                </div>
+            </div>
+        `).join("")}catch(e){const n=document.getElementById("credential-list");n&&(n.innerHTML=`
+                <div class="empty-state">
+                    <div class="icon">\u26A0\uFE0F</div>
+                    <h3>\u52A0\u8F7D\u5931\u8D25</h3>
+                    <p>${r(String(e))}</p>
+                </div>
+            `)}}let d=null;function ye(){d||(d=document.createElement("div"),d.className="cred-tooltip",d.innerHTML='<div class="cred-tooltip-content"></div>',document.body.appendChild(d))}function fe(e,n){ye(),d.querySelector(".cred-tooltip-content").textContent=n,d.style.left="-9999px",d.style.top="-9999px",d.classList.add("visible");const t=e.getBoundingClientRect(),o=d.getBoundingClientRect(),a=window.innerHeight,l=t.top,u=a-t.bottom,s=l<o.height+14&&u>o.height+14;let c;s?(c=t.bottom+10,d.className="cred-tooltip visible arrow-up"):(c=t.top-o.height-10,d.className="cred-tooltip visible arrow-down");let b=t.left+t.width/2-o.width/2;b=Math.max(12,Math.min(b,window.innerWidth-o.width-12)),d.style.left=b+"px",d.style.top=c+"px"}function $(){d&&d.classList.remove("visible")}document.addEventListener("mouseover",e=>{const n=e.target.closest(".credential-item");if(!n)return;const t=n.dataset.id,o=t&&L[t];o&&fe(n,o)});document.addEventListener("mouseout",e=>{const n=e.target.closest(".credential-item");if(!n){$();return}const t=e.relatedTarget;(!t||!n.contains(t))&&$()});document.addEventListener("scroll",$,!0);window.showTypeSelection=function(){document.querySelector("#app").innerHTML=`
+        <div class="type-selection">
+            <div class="type-card">
+                <h2>\u65B0\u589E\u51ED\u8BC1</h2>
+                <p class="form-subtitle">\u9009\u62E9\u8981\u6DFB\u52A0\u7684\u51ED\u8BC1\u7C7B\u578B</p>
+                <div class="type-options">
+                    <div class="type-option" onclick="showBrowserForm()">
+                        <div class="type-icon">\u{1F310}</div>
+                        <h3>\u6D4F\u89C8\u5668\u5BC6\u7801</h3>
+                        <p>\u4FDD\u5B58\u7F51\u7AD9\u767B\u5F55\u8D26\u53F7\u548C\u5BC6\u7801</p>
+                    </div>
+                    <div class="type-option" onclick="showApiKeyForm()">
+                        <div class="type-icon">\u{1F511}</div>
+                        <h3>API Key</h3>
+                        <p>\u4FDD\u5B58\u670D\u52A1\u5BC6\u94A5\u548C\u8BBF\u95EE\u4EE4\u724C</p>
+                    </div>
+                    <div class="type-option" onclick="showSSHKeyForm()">
+                        <div class="type-icon">\u{1F510}</div>
+                        <h3>SSH \u5BC6\u94A5</h3>
+                        <p>\u4FDD\u5B58 SSH \u79C1\u94A5\u548C\u8FDE\u63A5\u4FE1\u606F</p>
+                    </div>
+                    <div class="type-option" onclick="showSecureNoteForm()">
+                        <div class="type-icon">\u{1F4DD}</div>
+                        <h3>\u5B89\u5168\u7B14\u8BB0</h3>
+                        <p>\u4FDD\u5B58\u52A0\u5BC6\u7684\u654F\u611F\u6587\u672C\u4FE1\u606F</p>
+                    </div>
+                    <div class="type-option" onclick="showDatabaseForm()">
+                        <div class="type-icon">\u{1F5C4}\uFE0F</div>
+                        <h3>\u6570\u636E\u5E93\u8FDE\u63A5</h3>
+                        <p>\u4FDD\u5B58\u6570\u636E\u5E93\u8FDE\u63A5\u51ED\u636E</p>
+                    </div>
+                    <div class="type-option" onclick="showEmailForm()">
+                        <div class="type-icon">\u{1F4E7}</div>
+                        <h3>\u90AE\u7BB1\u8D26\u53F7</h3>
+                        <p>\u4FDD\u5B58\u90AE\u7BB1\u767B\u5F55\u4FE1\u606F</p>
+                    </div>
+                    <div class="type-option" onclick="showBankCardForm()">
+                        <div class="type-icon">\u{1F4B3}</div>
+                        <h3>\u94F6\u884C\u5361/\u4FE1\u7528\u5361</h3>
+                        <p>\u4FDD\u5B58\u94F6\u884C\u5361\u4FE1\u606F</p>
+                    </div>
+                </div>
+                <div class="type-back">
+                    <button class="btn btn-ghost" onclick="showMainView()">\u2190 \u8FD4\u56DE\u5217\u8868</button>
+                </div>
+            </div>
+        </div>
+    `};function y(e,n){const t=n!=null,o=w[e]||w[0],a=o.fields.map(s=>{const c=t&&s.id!=="secret"?r(n[s.id]||""):"",b=t&&s.editPlaceholder?s.editPlaceholder:s.placeholder;if(s.type==="textarea"){const v=s.id==="secret"?` style="font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6;"`:"";return`<div class="form-group"><label>${r(s.label)}</label><textarea id="${s.id}" rows="${s.rows||4}" placeholder="${r(b)}"${v}>${c}</textarea></div>`}if(s.type==="password"){let v="";s.generate&&(v='<button class="btn btn-secondary btn-small" onclick="generatePassword()">\u751F\u6210</button>');let E="";return s.strength&&(E='<div class="strength-indicator"><div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div><span class="strength-text" id="strength-text"></span></div>'),`<div class="form-group"><label>${r(s.label)}</label><div class="password-input"><input type="password" id="${s.id}" value="" placeholder="${r(b)}"><button class="btn btn-icon" onclick="toggleSecretVisibility()" title="\u663E\u793A/\u9690\u85CF">\u{1F441}</button>${v}</div>${E}</div>`}return`<div class="form-group"><label>${r(s.label)}</label><input type="text" id="${s.id}" value="${c}" placeholder="${r(b)}"></div>`}).join(`
+                `),l=t?r(n.name):"";document.querySelector("#app").innerHTML=`
+        <div class="form-page">
+            <div class="form-card">
+                <h2>${t?"\u7F16\u8F91"+o.title:"\u65B0\u589E"+o.title}</h2>
+                <p class="form-subtitle">${t?o.editSubtitle:o.subtitle}</p>
+                <input type="hidden" id="type" value="${e}">
+
+                <div class="form-group">
+                    <label>${r(o.nameLabel)}</label>
+                    <input type="text" id="name" value="${l}" placeholder="${r(o.namePlaceholder)}">
+                </div>
+
+                ${a}
+
+                <div class="form-group">
+                    <label>\u5907\u6CE8</label>
+                    <textarea id="notes" placeholder="${r(o.notesPlaceholder)}">${t?r(n.notes):""}</textarea>
+                </div>
+
+                <div class="buttons">
+                    <button class="btn btn-secondary" onclick="showMainView()">\u53D6\u6D88</button>
+                    <button class="btn btn-primary" onclick="saveCredential(${t?n.id:0})">\u4FDD\u5B58</button>
+                </div>
+            </div>
+        </div>
+    `;const u=document.getElementById("secret");u&&o.fields.some(s=>s.strength)&&u.addEventListener("input",s=>x(s.target.value))}window.showBrowserForm=e=>y(0,e);window.showApiKeyForm=e=>y(1,e);window.showSSHKeyForm=e=>y(2,e);window.showSecureNoteForm=e=>y(3,e);window.showDatabaseForm=e=>y(4,e);window.showEmailForm=e=>y(5,e);window.showBankCardForm=e=>y(6,e);window.editCredential=async function(e){try{const n=await I(e);if(!n)return;y(n.type,n)}catch(n){i("\u52A0\u8F7D\u5931\u8D25: "+n,"error")}};window.saveCredential=async function(e){var c,b;const n=parseInt(document.getElementById("type").value),t=document.getElementById("name").value,o=((c=document.getElementById("url"))==null?void 0:c.value)||"",a=((b=document.getElementById("username"))==null?void 0:b.value)||"",l=document.getElementById("secret").value,u=document.getElementById("notes").value;if(!t){i("\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A","error");return}if(!l&&e===0){const v=w[n],E=v?v.fields.find(q=>q.id==="secret").label:"\u5BC6\u7801";i(E+"\u4E0D\u80FD\u4E3A\u7A7A","error");return}const s={id:e,name:t,type:n,url:o,username:a,secret:l,notes:u,is_favorite:0};try{e>0?await le(s):await G(s),i("\u4FDD\u5B58\u6210\u529F","success"),showMainView()}catch(v){i("\u4FDD\u5B58\u5931\u8D25: "+v,"error")}};window.viewCredential=async function(e){let n;try{n=await I(e)}catch(c){i("\u52A0\u8F7D\u5931\u8D25: "+c,"error");return}if(!n)return;let t="";try{t=await X(e)}catch(c){i("\u89E3\u5BC6\u5931\u8D25: "+c,"error");return}const o=w[n.type]||w[0],a=[1,2,3],l=[{label:o.nameLabel,value:n.name,mono:!1}];o.fields.forEach(c=>{c.id==="secret"?l.push({label:c.label,value:t,mono:a.includes(n.type)}):c.id!=="secret"&&n[c.id]&&l.push({label:c.label,value:n[c.id],mono:!1})}),n.notes&&l.push({label:"\u5907\u6CE8",value:n.notes,mono:!1});const u=l.map(c=>`
+            <div class="form-group">
+                <label>${r(c.label)}</label>
+                <div class="field-copy-row">
+                    <div class="password-display" style="${c.mono?"font-family: 'JetBrains Mono', monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all;":""}">${r(c.value)}</div>
+                    <button class="btn-copy" onclick="copyToClipboard(this.previousElementSibling.textContent)" title="\u590D\u5236">\u{1F4CB}</button>
+                </div>
+            </div>
+    `).join(""),s=document.createElement("div");s.className="modal-overlay",s.innerHTML=`
+        <div class="modal modal-wide">
+            <h3>${r(n.name)}</h3>
+            ${u}
+            <div class="modal-buttons">
+                <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">\u5173\u95ED</button>
+            </div>
+        </div>
+    `,document.body.appendChild(s),s.addEventListener("click",c=>{c.target===s&&s.remove()})};window.deleteCredential=async function(e){F("\u5220\u9664\u51ED\u8BC1",async n=>{try{await D(e,n),g();const t=document.createElement("div");t.className="modal-overlay",t.innerHTML=`
+                <div class="modal">
+                    <h3>\u786E\u8BA4\u5220\u9664</h3>
+                    <p class="text-sm text-muted">\u8EAB\u4EFD\u5DF2\u9A8C\u8BC1\uFF0C\u786E\u5B9A\u8981\u5220\u9664\u6B64\u51ED\u8BC1\u5417\uFF1F\u6B64\u64CD\u4F5C\u4E0D\u53EF\u64A4\u9500\u3002</p>
+                    <div class="modal-buttons">
+                        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">\u53D6\u6D88</button>
+                        <button class="btn btn-danger" id="confirm-delete">\u5220\u9664</button>
+                    </div>
+                </div>
+            `,document.body.appendChild(t),t.addEventListener("click",o=>{o.target===t&&t.remove()}),t.querySelector("#confirm-delete").onclick=async()=>{try{await K(e),t.remove(),i("\u5DF2\u5220\u9664","success"),A(),f()}catch(o){i("\u5220\u9664\u5931\u8D25: "+o,"error")}}}catch(t){i("\u9A8C\u8BC1\u5931\u8D25\uFF0C\u65E0\u6CD5\u5220\u9664: "+t,"error")}})};window.toggleSelectMode=function(){h=!h;const e=document.getElementById("batch-delete-btn");e&&(e.classList.toggle("active",h),e.textContent=h?"\u53D6\u6D88\u9009\u62E9":"\u6279\u91CF\u5220\u9664"),h||clearSelection()};window.handleCredClick=function(e,n){if(!h){viewCredential(e);return}n.stopPropagation(),m.has(e)?m.delete(e):m.add(e);const t=document.querySelector(`.credential-item[data-id="${e}"]`);t&&t.classList.toggle("selected",m.has(e)),M()};function M(){const e=document.getElementById("selection-bar"),n=document.getElementById("selection-count");!e||(m.size>0?(e.style.display="flex",n.textContent=`\u5DF2\u9009 ${m.size} \u9879`):e.style.display="none")}window.clearSelection=function(){m.clear(),document.querySelectorAll(".credential-item.selected").forEach(e=>e.classList.remove("selected")),M()};window.batchDelete=function(){if(m.size===0)return;const e=m.size;F("\u6279\u91CF\u5220\u9664",async n=>{try{const t=Array.from(m);await D(t[0],n),g();const o=document.createElement("div");o.className="modal-overlay",o.innerHTML=`
+                <div class="modal">
+                    <h3>\u786E\u8BA4\u6279\u91CF\u5220\u9664</h3>
+                    <p class="text-sm text-muted">\u8EAB\u4EFD\u5DF2\u9A8C\u8BC1\uFF0C\u786E\u5B9A\u8981\u5220\u9664\u9009\u4E2D\u7684 ${e} \u6761\u51ED\u8BC1\u5417\uFF1F\u6B64\u64CD\u4F5C\u4E0D\u53EF\u64A4\u9500\u3002</p>
+                    <div class="modal-buttons">
+                        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">\u53D6\u6D88</button>
+                        <button class="btn btn-danger" id="confirm-batch-delete">\u5220\u9664 ${e} \u6761</button>
+                    </div>
+                </div>
+            `,document.body.appendChild(o),o.addEventListener("click",a=>{a.target===o&&o.remove()}),o.querySelector("#confirm-batch-delete").onclick=async()=>{try{await R(t),o.remove(),clearSelection(),h=!1;const a=document.getElementById("batch-delete-btn");a&&(a.classList.remove("active"),a.textContent="\u6279\u91CF\u5220\u9664"),i(`\u5DF2\u5220\u9664 ${e} \u6761\u51ED\u8BC1`,"success"),A(),f()}catch(a){i("\u6279\u91CF\u5220\u9664\u5931\u8D25: "+a,"error")}}}catch(t){i("\u9A8C\u8BC1\u5931\u8D25: "+t,"error")}})};function F(e,n){const t=document.createElement("div");t.className="modal-overlay",t.innerHTML=`
+        <div class="modal">
+            <h3>\u9A8C\u8BC1\u8EAB\u4EFD</h3>
+            <p class="text-sm text-muted">\u8BF7\u8F93\u5165\u4E3B\u5BC6\u94A5\u4EE5${e}</p>
+            <div class="form-group mt-4">
+                <input type="password" id="verify-password" placeholder="\u8F93\u5165\u4E3B\u5BC6\u94A5">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">\u53D6\u6D88</button>
+                <button class="btn btn-primary" id="verify-btn">\u786E\u8BA4</button>
+            </div>
+        </div>
+    `,document.body.appendChild(t);const o=t.querySelector("#verify-password");o.focus(),t.querySelector("#verify-btn").onclick=()=>{const a=o.value;!a||n(a)},o.addEventListener("keydown",a=>{a.key==="Enter"&&t.querySelector("#verify-btn").click()}),t.addEventListener("click",a=>{a.target===t&&t.remove()})}function g(){document.querySelectorAll(".modal-overlay").forEach(e=>e.remove())}function ge(e,n){return new Promise(t=>{const o=document.createElement("div");o.className="modal-overlay",o.innerHTML=`
+            <div class="modal">
+                <h3>${r(e)}</h3>
+                <p class="text-sm text-muted">${r(n)}</p>
+                <div class="modal-buttons">
+                    <button class="btn btn-secondary" id="confirm-cancel">\u53D6\u6D88</button>
+                    <button class="btn btn-primary" id="confirm-ok">\u786E\u8BA4</button>
+                </div>
+            </div>
+        `,document.body.appendChild(o),o.addEventListener("click",a=>{a.target===o&&(o.remove(),t(!1))}),o.querySelector("#confirm-cancel").onclick=()=>{o.remove(),t(!1)},o.querySelector("#confirm-ok").onclick=()=>{o.remove(),t(!0)}})}window.toggleSecretVisibility=function(){const e=document.getElementById("secret");e&&(e.type=e.type==="password"?"text":"password")};window.generatePassword=async function(){const e=await Y(ue);document.getElementById("secret").value=e,document.getElementById("secret").type="text",x(e)};function x(e){const n=document.getElementById("strength-fill"),t=document.getElementById("strength-text");if(!(!n||!t)){if(!e){n.style.width="0",t.textContent="";return}O(e).then(o=>{const a=["\u5F31","\u4E2D","\u5F3A"],l=["#dc2626","#d97706","#16a34a"],u=["33%","66%","100%"],s=Math.max(0,Math.min(2,o||0));n.style.width=u[s],n.style.background=l[s],n.style.boxShadow=`0 0 8px ${l[s]}40`,t.textContent=`\u5BC6\u7801\u5F3A\u5EA6: ${a[s]}`,t.style.color=l[s]})}}window.copyToClipboard=function(e){navigator.clipboard.writeText(e).catch(()=>{i("\u590D\u5236\u5931\u8D25","error")}),i("\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF0C30\u79D2\u540E\u81EA\u52A8\u6E05\u9664","success"),k&&clearTimeout(k),k=setTimeout(()=>{navigator.clipboard.readText().then(n=>{n===e&&navigator.clipboard.writeText("").catch(()=>{})}).catch(()=>{}),k=null},pe)};window.toggleFavorite=async function(e){try{await ie(e);const n=document.querySelector(`.credential-item[data-id="${e}"]`);if(n){const t=n.querySelector(".favorite-btn"),o=t.classList.contains("active");t.classList.toggle("active",!o),t.classList.toggle("inactive",o),t.innerHTML=o?"\u2606":"\u2605"}p===-2&&f()}catch(n){i("\u64CD\u4F5C\u5931\u8D25: "+n,"error")}};window.filterCredentials=function(e){p=e,clearSelection(),document.querySelectorAll(".tab").forEach(n=>{n.classList.toggle("active",parseInt(n.dataset.type)===e)}),f()};window.searchCredentials=function(e){C=e,clearTimeout(T),T=setTimeout(()=>f(),me)};window.setupMaster=async function(){const e=document.getElementById("password").value,n=document.getElementById("confirm").value;if(!e){i("\u5BC6\u7801\u4E0D\u80FD\u4E3A\u7A7A","error");return}if(e!==n){i("\u4E24\u6B21\u8F93\u5165\u7684\u5BC6\u7801\u4E0D\u4E00\u81F4","error");return}try{await ae(e),i("\u8BBE\u7F6E\u6210\u529F","success"),showMainView()}catch(t){i("\u8BBE\u7F6E\u5931\u8D25: "+t,"error")}};window.unlock=async function(){const e=document.getElementById("password").value;if(!e){i("\u5BC6\u7801\u4E0D\u80FD\u4E3A\u7A7A","error");return}try{await se(e),showMainView()}catch(n){i(""+n,"error")}};window.lockApp=async function(){try{await ne()}catch{}B()};window.showChangePasswordForm=function(){document.querySelector("#app").innerHTML=`
+        <div class="form-page">
+            <div class="form-card" style="max-width: 460px;">
+                <h2>\u4FEE\u6539\u4E3B\u5BC6\u94A5</h2>
+                <p class="form-subtitle">\u8F93\u5165\u65E7\u5BC6\u7801\u548C\u65B0\u5BC6\u7801\u6765\u66F4\u6362\u4E3B\u5BC6\u94A5</p>
+
+                <div class="form-group">
+                    <label>\u5F53\u524D\u4E3B\u5BC6\u94A5</label>
+                    <input type="password" id="old-password" placeholder="\u8F93\u5165\u5F53\u524D\u4E3B\u5BC6\u94A5" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label>\u65B0\u4E3B\u5BC6\u94A5</label>
+                    <input type="password" id="new-password" placeholder="\u8BBE\u7F6E\u65B0\u7684\u4E3B\u5BC6\u94A5" autocomplete="off">
+                    <div class="strength-indicator">
+                        <div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div>
+                        <span class="strength-text" id="strength-text"></span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>\u786E\u8BA4\u65B0\u5BC6\u94A5</label>
+                    <input type="password" id="confirm-password" placeholder="\u518D\u6B21\u8F93\u5165\u65B0\u4E3B\u5BC6\u94A5" autocomplete="off">
+                </div>
+
+                <div class="buttons">
+                    <button class="btn btn-secondary" onclick="showMainView()">\u53D6\u6D88</button>
+                    <button class="btn btn-primary" onclick="changePassword()">\u786E\u8BA4\u4FEE\u6539</button>
+                </div>
+            </div>
+        </div>
+    `,document.getElementById("new-password").addEventListener("input",e=>{x(e.target.value)})};window.changePassword=async function(){const e=document.getElementById("old-password").value,n=document.getElementById("new-password").value,t=document.getElementById("confirm-password").value;if(!e||!n){i("\u5BC6\u7801\u4E0D\u80FD\u4E3A\u7A7A","error");return}if(n!==t){i("\u4E24\u6B21\u8F93\u5165\u7684\u65B0\u5BC6\u7801\u4E0D\u4E00\u81F4","error");return}if(e===n){i("\u65B0\u5BC6\u7801\u4E0D\u80FD\u4E0E\u65E7\u5BC6\u7801\u76F8\u540C","error");return}try{await _(e,n),i("\u4E3B\u5BC6\u94A5\u4FEE\u6539\u6210\u529F","success"),showMainView()}catch(o){i("\u4FEE\u6539\u5931\u8D25: "+o,"error")}};window.exportSingle=function(e){N(async n=>{try{const t=await z(e,n);i("\u5DF2\u5BFC\u51FA: "+t,"success")}catch(t){String(t).includes("\u5DF2\u53D6\u6D88")||i("\u5BFC\u51FA\u5931\u8D25: "+t,"error")}})};window.exportData=async function(){const e=await P();if(Object.values(e).reduce((t,o)=>t+o,0)===0){i("\u6CA1\u6709\u51ED\u8BC1\u53EF\u5BFC\u51FA","error");return}N(async t=>{if(!!await ge("\u5B89\u5168\u63D0\u9192","\u5BFC\u51FA\u7684\u6587\u4EF6\u5305\u542B\u660E\u6587\u5BC6\u7801\uFF0C\u8BF7\u59A5\u5584\u4FDD\u7BA1\u5E76\u53CA\u65F6\u5220\u9664\u4E0D\u518D\u9700\u8981\u7684\u6587\u4EF6\u3002\u662F\u5426\u7EE7\u7EED\u5BFC\u51FA\uFF1F"))try{const a=await U(t);i("\u5DF2\u5BFC\u51FA\u5230: "+a,"success")}catch(a){String(a).includes("\u5DF2\u53D6\u6D88")||i("\u5BFC\u51FA\u5931\u8D25: "+a,"error")}})};function N(e){const n=document.createElement("div");n.className="modal-overlay",n.innerHTML=`
+        <div class="modal">
+            <h3>\u9009\u62E9\u5BFC\u51FA\u683C\u5F0F</h3>
+            <p class="text-sm text-muted">\u8BF7\u9009\u62E9\u5BFC\u51FA\u6587\u4EF6\u7684\u683C\u5F0F</p>
+            <div class="modal-buttons" style="flex-direction: column; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-secondary" id="export-json" style="width: 100%">JSON \u683C\u5F0F</button>
+                <button class="btn btn-secondary" id="export-excel" style="width: 100%">Excel \u683C\u5F0F</button>
+                <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()" style="width: 100%">\u53D6\u6D88</button>
+            </div>
+        </div>
+    `,document.body.appendChild(n),n.addEventListener("click",t=>{t.target===n&&n.remove()}),n.querySelector("#export-json").onclick=()=>{n.remove(),e("json")},n.querySelector("#export-excel").onclick=()=>{n.remove(),e("excel")}}window.importData=async function(){try{const e=await ee();i(`\u6210\u529F\u5BFC\u5165 ${e} \u6761\u51ED\u8BC1`,"success"),A(),f()}catch(e){String(e).includes("\u5DF2\u53D6\u6D88")||i("\u5BFC\u5165\u5931\u8D25: "+e,"error")}};window.showTemplateMenu=function(){const e=document.createElement("div");e.className="modal-overlay",e.innerHTML=`
+        <div class="modal">
+            <h3>\u4E0B\u8F7D\u6A21\u677F</h3>
+            <p class="text-sm text-muted">\u9009\u62E9\u6A21\u677F\u683C\u5F0F\uFF0C\u7528\u4E8E\u6279\u91CF\u5BFC\u5165\u51ED\u8BC1</p>
+            <div class="modal-buttons" style="flex-direction: column; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="downloadJSONTemplate()" style="width: 100%">JSON \u6A21\u677F</button>
+                <button class="btn btn-secondary" onclick="downloadExcelTemplate()" style="width: 100%">Excel \u6A21\u677F</button>
+                <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()" style="width: 100%">\u53D6\u6D88</button>
+            </div>
+        </div>
+    `,document.body.appendChild(e),e.addEventListener("click",n=>{n.target===e&&e.remove()})};window.downloadJSONTemplate=async function(){g();try{const e=await J();i("\u6A21\u677F\u5DF2\u4FDD\u5B58: "+e,"success")}catch(e){String(e).includes("\u5DF2\u53D6\u6D88")||i("\u4E0B\u8F7D\u5931\u8D25: "+e,"error")}};window.downloadExcelTemplate=async function(){g();try{const e=await j();i("\u6A21\u677F\u5DF2\u4FDD\u5B58: "+e,"success")}catch(e){String(e).includes("\u5DF2\u53D6\u6D88")||i("\u4E0B\u8F7D\u5931\u8D25: "+e,"error")}};function r(e){if(!e)return"";const n=document.createElement("div");return n.textContent=e,n.innerHTML}function i(e,n="success"){const t=document.createElement("div");t.className=`toast ${n}`,t.textContent=e,document.body.appendChild(t),setTimeout(()=>{t.style.animation="toastIn 0.3s ease-out reverse",setTimeout(()=>t.remove(),300)},3e3)}window.showSettings=async function(){let e="";try{e=await Q()}catch{}e.replace(/[\\\/][^\\\/]+$/,"");const n=!e.includes("AppData\\Roaming\\PasswordManager")&&!e.includes("AppData/Roaming/PasswordManager"),t=document.createElement("div");t.className="modal-overlay",t.innerHTML=`
+        <div class="modal settings-modal">
+            <h3>\u8BBE\u7F6E</h3>
+            <div class="settings-section">
+                <label class="settings-label">\u6570\u636E\u5E93\u5B58\u50A8\u4F4D\u7F6E</label>
+                <div class="settings-path-row">
+                    <code class="settings-path" id="db-path-display">${r(e)}</code>
+                    <button class="btn btn-ghost btn-small" onclick="copyPath()">\u590D\u5236</button>
+                </div>
+                <div class="settings-actions">
+                    <button class="btn btn-primary btn-small" onclick="changeDbPath()">\u66F4\u6539\u8DEF\u5F84</button>
+                    ${n?'<button class="btn btn-secondary btn-small" onclick="resetDbPath()">\u6062\u590D\u9ED8\u8BA4</button>':""}
+                </div>
+                <p class="settings-hint">\u66F4\u6539\u540E\u9700\u91CD\u542F\u5E94\u7528\u751F\u6548</p>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">\u5173\u95ED</button>
+            </div>
+        </div>
+    `,document.body.appendChild(t),t.addEventListener("click",o=>{o.target===t&&t.remove()})};window.copyPath=function(){const e=document.getElementById("db-path-display");e&&(navigator.clipboard.writeText(e.textContent),i("\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F","success"))};window.changeDbPath=async function(){try{const e=await V();g(),i("\u6570\u636E\u5E93\u8DEF\u5F84\u5DF2\u66F4\u6539: "+e+`
+\u8BF7\u91CD\u542F\u5E94\u7528`,"success")}catch(e){String(e).includes("\u5DF2\u53D6\u6D88")||i("\u66F4\u6539\u5931\u8D25: "+e,"error")}};window.resetDbPath=async function(){try{await oe(),g(),i("\u5DF2\u6062\u590D\u9ED8\u8BA4\u8DEF\u5F84\uFF0C\u8BF7\u91CD\u542F\u5E94\u7528","success")}catch(e){i("\u6062\u590D\u5931\u8D25: "+e,"error")}};he();
+
+</script>
+  <style>
+@import"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap";*{margin:0;padding:0;box-sizing:border-box}:root{--bg-page: #f5f0e8;--bg-surface: #ffffff;--bg-elevated: #faf8f4;--bg-card: rgba(255, 255, 255, .92);--border-light: rgba(0, 0, 0, .08);--border-medium: rgba(0, 0, 0, .12);--border-accent: rgba(168, 137, 63, .3);--input-bg: #ffffff;--input-border: rgba(0, 0, 0, .12);--input-focus: rgba(168, 137, 63, .35);--text-primary: #1a1a2e;--text-secondary: #4a4a5a;--text-muted: #8a8a9a;--text-gold: #a8893f;--accent: #a8893f;--accent-hover: #c4a050;--accent-glow: rgba(168, 137, 63, .12);--accent-deep: #8a7030;--success: #16a34a;--warning: #d97706;--danger: #dc2626;--radius-sm: 8px;--radius-md: 12px;--radius-lg: 16px;--radius-xl: 20px;--shadow-sm: 0 1px 3px rgba(0, 0, 0, .06);--shadow-md: 0 4px 16px rgba(0, 0, 0, .08);--shadow-lg: 0 8px 32px rgba(0, 0, 0, .1);--shadow-card: 0 1px 4px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);--transition: all .25s cubic-bezier(.4, 0, .2, 1);--bg-icon: linear-gradient(145deg, #f5f0e8, #ebe5d8);--bg-page-gradient: radial-gradient(ellipse at 20% 30%, rgba(168, 137, 63, .05) 0%, transparent 50%), radial-gradient(ellipse at 80% 70%, rgba(168, 137, 63, .03) 0%, transparent 50%)}html,body{width:100%;height:100%;font-family:DM Sans,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg-page);color:var(--text-primary);overflow:hidden}body:after{content:"";position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:1}#splash{position:fixed;inset:0;z-index:9998;background:#f5f0e8;background-image:radial-gradient(ellipse at 20% 30%,rgba(168,137,63,.06) 0%,transparent 50%),radial-gradient(ellipse at 80% 70%,rgba(168,137,63,.04) 0%,transparent 50%);display:flex;align-items:center;justify-content:center;transition:opacity .6s ease,transform .6s ease}#splash.fade-out{opacity:0;transform:scale(1.05);pointer-events:none}.splash-inner{display:flex;flex-direction:column;align-items:center;gap:32px;position:relative}.vault-ring{position:absolute;border-radius:50%;border:1.5px solid rgba(168,137,63,.18);top:50%;left:50%;transform:translate(-50%,-50%) scale(0);pointer-events:none}.vault-ring-1{width:120px;height:120px;animation:ringPulse 2.4s ease-out .3s forwards}.vault-ring-2{width:180px;height:180px;animation:ringPulse 2.4s ease-out .6s forwards}.vault-ring-3{width:240px;height:240px;animation:ringPulse 2.4s ease-out .9s forwards}@keyframes ringPulse{0%{transform:translate(-50%,-50%) scale(0);opacity:0}30%{opacity:1}to{transform:translate(-50%,-50%) scale(1);opacity:0}}.lock-svg{width:64px;height:64px;color:#a8893f;position:relative;z-index:1;filter:drop-shadow(0 2px 8px rgba(168,137,63,.2))}.lock-shackle{stroke-dasharray:80;stroke-dashoffset:80;animation:drawShackle 1s ease-out .4s forwards}@keyframes drawShackle{to{stroke-dashoffset:0}}.lock-body{opacity:0;animation:fadeScaleIn .5s ease-out .2s forwards}@keyframes fadeScaleIn{0%{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}.lock-hole,.lock-keyway{opacity:0;animation:fadeInLock .4s ease-out 1.2s forwards}@keyframes fadeInLock{to{opacity:1}}.lock-svg.unlocked .lock-shackle{animation:unlockShackle .6s ease-in-out forwards}@keyframes unlockShackle{0%{transform:translateY(0) rotate(0)}50%{transform:translateY(-8px) rotate(0)}to{transform:translateY(-10px) rotate(-15deg);transform-origin:right center}}.splash-text{display:flex;flex-direction:column;align-items:center;gap:10px;position:relative;z-index:1}.splash-title{font-family:Playfair Display,serif;font-size:28px;font-weight:700;letter-spacing:12px;color:#a8893f;opacity:0;animation:titleReveal .8s ease-out 1s forwards}@keyframes titleReveal{0%{opacity:0;letter-spacing:24px}to{opacity:1;letter-spacing:12px}}.splash-sub{font-family:DM Sans,sans-serif;font-size:13px;color:#a8893f8c;opacity:0;animation:fadeIn .6s ease-out 1.4s forwards}.splash-inner:after{content:"";position:absolute;top:-60px;left:-80px;right:-80px;height:1px;background:linear-gradient(90deg,transparent,rgba(168,137,63,.25),transparent);animation:scanLine 2s ease-in-out 1.6s forwards;opacity:0}@keyframes scanLine{0%{top:-60px;opacity:0}10%{opacity:1}90%{opacity:1}to{top:100%;opacity:0}}#app{width:100%;height:100%}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(168,137,63,.15);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:rgba(168,137,63,.3)}.auth-container{display:flex;justify-content:center;align-items:center;height:100%;padding:24px;background:var(--bg-page-gradient);position:relative}.auth-container:before{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 20% 80%,rgba(168,137,63,.04) 0%,transparent 40%),radial-gradient(circle at 80% 20%,rgba(168,137,63,.03) 0%,transparent 40%);pointer-events:none}.auth-card{background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-xl);padding:48px 44px;width:100%;max-width:440px;box-shadow:var(--shadow-lg),0 0 80px #a8893f0a;animation:cardReveal .5s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden}.auth-card:before{content:"";position:absolute;top:0;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);border-radius:2px}@keyframes cardReveal{0%{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}.auth-card .logo{text-align:center;margin-bottom:36px}.auth-card .logo .icon{width:64px;height:64px;background:var(--bg-icon);border:1px solid var(--border-medium);border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px;box-shadow:0 0 24px #a8893f1a;animation:iconGlow 3s ease-in-out infinite alternate}@keyframes iconGlow{0%{box-shadow:0 0 20px #a8893f0f}to{box-shadow:0 0 30px #a8893f24}}.auth-card h1{font-family:Playfair Display,Georgia,serif;font-size:28px;font-weight:700;text-align:center;margin-bottom:8px;color:var(--text-primary)}.auth-card .subtitle{text-align:center;color:var(--text-muted);font-size:13px;margin-bottom:32px;letter-spacing:1px;text-transform:uppercase;font-weight:500}.form-group{margin-bottom:20px}.form-group label{display:block;margin-bottom:8px;color:var(--text-secondary);font-size:12px;font-weight:600;letter-spacing:.8px;text-transform:uppercase}.form-group input,.form-group select,.form-group textarea{width:100%;padding:12px 14px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:var(--radius-md);color:var(--text-primary);font-size:14px;font-family:inherit;outline:none;transition:var(--transition)}.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow),0 2px 8px #a8893f0f}.form-group input::placeholder{color:var(--text-muted)}.form-group textarea{min-height:80px;resize:vertical}.password-input{display:flex;gap:8px;align-items:center}.password-input input{flex:1;padding:14px 16px;font-family:JetBrains Mono,Courier New,monospace;font-size:14px;min-height:48px;letter-spacing:.5px}.strength-indicator{margin-top:8px}.strength-bar{height:3px;background:rgba(0,0,0,.06);border-radius:2px;overflow:hidden}.strength-fill{height:100%;width:0;border-radius:2px;transition:width .4s ease,background .4s ease,box-shadow .4s ease}.strength-text{font-size:11px;margin-top:4px;color:var(--text-muted)}.buttons{display:flex;gap:12px;margin-top:28px}.btn{padding:12px 24px;border:1px solid transparent;border-radius:var(--radius-md);cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;transition:var(--transition);display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:.3px}.btn-primary{background:var(--accent);color:#fff;flex:1;box-shadow:0 2px 8px #a8893f40;position:relative;overflow:hidden}.btn-primary:after{content:"";position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:linear-gradient(45deg,transparent 30%,rgba(255,255,255,.12) 50%,transparent 70%);transform:translate(-100%);transition:none}.btn-primary:hover{background:var(--accent-hover);transform:translateY(-1px);box-shadow:0 4px 16px #a8893f4d}.btn-primary:hover:after{transform:translate(100%);transition:transform .6s ease}.btn-primary:active{transform:translateY(0);box-shadow:0 1px 4px #a8893f33}.btn-secondary{background:var(--bg-elevated);color:var(--text-secondary);border:1px solid var(--border-light);flex:1}.btn-secondary:hover{background:#f0ebe0;color:var(--text-primary)}.btn-secondary:active{background:#e8e0d0;transform:scale(.98)}.btn-ghost{background:transparent;color:var(--text-muted);padding:6px 12px;border:1px solid transparent;font-weight:500}.btn-ghost:hover{color:var(--text-gold);background:rgba(168,137,63,.06)}.btn-danger{background:var(--danger);color:#fff}.btn-small{padding:7px 14px;font-size:12px}.btn-icon{width:42px;height:42px;padding:0;border-radius:var(--radius-sm);background:var(--bg-elevated);border:1px solid var(--border-light);color:var(--text-muted);font-size:15px;flex-shrink:0}.btn-icon:hover{border-color:var(--border-accent);color:var(--text-gold)}.btn-icon:active{transform:scale(.95);background:rgba(168,137,63,.06)}.app-container{display:flex;flex-direction:column;height:100%;padding:20px 28px;animation:fadeIn .25s ease-out}@keyframes fadeIn{0%{opacity:0}to{opacity:1}}.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border-light);position:relative}.header:after{content:"";position:absolute;bottom:-1px;left:0;right:0;height:1px;background:linear-gradient(90deg,var(--border-accent),transparent 60%)}.header-left{display:flex;align-items:center;gap:12px}.header-logo{width:36px;height:36px;background:var(--bg-icon);border:1px solid var(--border-medium);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:16px}.header-title{font-family:Playfair Display,Georgia,serif;font-size:20px;font-weight:700;color:var(--text-primary)}.header-actions{display:flex;align-items:center;gap:8px}.search-box{position:relative;flex:1;max-width:360px;margin:0 20px}.search-box input{width:100%;padding:9px 14px 9px 36px;background:var(--bg-surface);border:1px solid var(--border-light);border-radius:var(--radius-md);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;transition:var(--transition)}.search-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow),0 2px 8px #a8893f14}.search-box:focus-within:before{color:var(--accent)}.search-box:before{content:"\2315";position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:15px;line-height:1;color:var(--text-muted);pointer-events:none}.tabs{display:flex;gap:2px;margin-bottom:18px;background:rgba(0,0,0,.03);padding:3px;border-radius:var(--radius-md);width:100%;border:1px solid var(--border-light);overflow-x:auto;flex-wrap:wrap}.tab{padding:7px 12px;background:transparent;border:none;border-radius:var(--radius-sm);color:var(--text-muted);cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.3px;transition:var(--transition);white-space:nowrap;flex-shrink:0}.tab.active{background:var(--bg-surface);color:var(--text-primary);box-shadow:var(--shadow-sm);position:relative}.tab.active:after{content:"";position:absolute;bottom:3px;left:50%;transform:translate(-50%);width:14px;height:2px;background:var(--accent);border-radius:1px}.tab:hover:not(.active){color:var(--text-gold)}.tab-count{font-size:10px;opacity:.5;margin-left:2px;font-weight:400}.tab.active .tab-count{opacity:.7}.credential-list{flex:1;overflow-y:auto;padding-right:4px}.credential-list::-webkit-scrollbar{width:5px}.credential-list::-webkit-scrollbar-track{background:transparent}.credential-list::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1);border-radius:3px}.credential-item{display:flex;align-items:center;padding:14px 18px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-md);margin-bottom:6px;transition:var(--transition);cursor:pointer;animation:itemReveal .35s cubic-bezier(.16,1,.3,1) backwards;animation-delay:calc(var(--i, 0) * .04s);position:relative}.credential-item:before{content:"";position:absolute;left:0;top:20%;bottom:20%;width:3px;background:var(--accent);border-radius:0 3px 3px 0;opacity:0;transform:scaleY(0);transition:opacity .25s ease,transform .25s cubic-bezier(.34,1.56,.64,1)}@keyframes itemReveal{0%{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.credential-item:hover{background:var(--bg-surface);border-color:var(--border-accent);box-shadow:var(--shadow-md)}.credential-item:hover:before{opacity:1;transform:scaleY(1)}.credential-item.selected{background:var(--accent-glow);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),var(--shadow-sm)}.credential-item.selected:before{opacity:1;transform:scaleY(1)}.selection-bar{display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--bg-surface);border:1px solid var(--border-accent);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);animation:barSlideUp .25s ease-out;margin-top:8px;flex-shrink:0}@keyframes barSlideUp{0%{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.selection-bar #selection-count{font-size:13px;font-weight:600;color:var(--accent);margin-right:auto}#batch-delete-btn.active{background:var(--danger);color:#fff;border-color:var(--danger)}.credential-icon{width:40px;height:40px;background:var(--bg-icon);border:1px solid var(--border-light);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:16px;margin-right:14px;flex-shrink:0;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease}.credential-item:hover .credential-icon{transform:scale(1.06);box-shadow:0 2px 8px #0000000f}.credential-info{flex:1;min-width:0}.credential-header{display:flex;align-items:center;gap:10px;margin-bottom:3px}.credential-name{font-weight:600;font-size:14px;color:var(--text-primary)}.credential-badge{font-size:9px;padding:2px 8px;background:rgba(168,137,63,.08);color:var(--text-gold);border:1px solid rgba(168,137,63,.15);border-radius:20px;font-weight:600;letter-spacing:.5px;transition:background .2s ease,border-color .2s ease}.credential-item:hover .credential-badge{background:rgba(168,137,63,.12);border-color:#a8893f40}.credential-meta{display:flex;font-size:12px;color:var(--text-muted)}.credential-meta span+span:before{content:"\b7";margin:0 10px;color:#00000026}.credential-actions{display:flex;gap:2px;opacity:0;transform:translate(8px);transition:opacity .25s ease,transform .25s ease}.credential-item:hover .credential-actions{opacity:1;transform:translate(0)}.favorite-btn{background:none;border:none;cursor:pointer;font-size:16px;padding:4px;transition:var(--transition)}.favorite-btn.inactive{color:var(--text-muted)}.favorite-btn.active{color:var(--warning);animation:starPop .3s cubic-bezier(.34,1.56,.64,1)}@keyframes starPop{0%{transform:scale(1)}50%{transform:scale(1.3)}to{transform:scale(1)}}.favorite-btn:hover{transform:scale(1.1)}.cred-tooltip{position:fixed;z-index:3000;max-width:340px;min-width:180px;padding:14px 18px;background:var(--bg-surface);border:1px solid var(--border-accent);border-radius:var(--radius-md);box-shadow:0 8px 32px #a8893f26,0 2px 8px #00000014;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .2s ease,transform .2s ease}.cred-tooltip.visible{opacity:1;transform:translateY(0)}.cred-tooltip:before{content:"\5907\6ce8";display:block;font-family:Playfair Display,Georgia,serif;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-gold);margin-bottom:8px}.cred-tooltip-content{font-size:13px;line-height:1.6;color:var(--text-secondary);word-break:break-word;white-space:pre-wrap;max-height:160px;overflow-y:auto}.cred-tooltip-content::-webkit-scrollbar{width:4px}.cred-tooltip-content::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1);border-radius:2px}.cred-tooltip.arrow-down:after{content:"";position:absolute;bottom:-6px;left:50%;transform:translate(-50%);border-left:6px solid transparent;border-right:6px solid transparent;border-top:6px solid var(--bg-surface);filter:drop-shadow(0 1px 1px rgba(0,0,0,.06))}.cred-tooltip.arrow-up:after{content:"";position:absolute;top:-6px;left:50%;transform:translate(-50%);border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:6px solid var(--bg-surface);filter:drop-shadow(0 -1px 1px rgba(0,0,0,.06))}.credential-actions .btn-ghost:hover{background:rgba(168,137,63,.08)}.form-page{display:flex;justify-content:center;align-items:center;height:100%;padding:32px 24px;overflow-y:auto;background:var(--bg-page-gradient);position:relative}.form-page:before{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 15% 85%,rgba(168,137,63,.03) 0%,transparent 40%),radial-gradient(circle at 85% 15%,rgba(168,137,63,.02) 0%,transparent 40%);pointer-events:none}.form-card{background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-xl);padding:36px 40px;width:100%;max-width:640px;box-shadow:var(--shadow-card);animation:cardReveal .4s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden}.form-card:before{content:"";position:absolute;top:0;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);border-radius:2px}.form-card h2{font-family:Playfair Display,Georgia,serif;font-size:24px;font-weight:700;margin-bottom:6px}.form-card .form-subtitle{color:var(--text-muted);margin-bottom:28px;font-size:13px}.form-row{display:flex;gap:12px}.form-row .form-group{flex:1}.toggle-group{display:flex;gap:2px;background:rgba(0,0,0,.03);padding:3px;border-radius:var(--radius-md);border:1px solid var(--border-light)}.toggle-btn{flex:1;padding:10px;background:transparent;border:none;border-radius:var(--radius-sm);color:var(--text-muted);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition)}.toggle-btn.active{background:var(--bg-surface);color:var(--text-primary);box-shadow:var(--shadow-sm);position:relative}.toggle-btn.active:after{content:"";position:absolute;bottom:4px;left:50%;transform:translate(-50%);width:16px;height:2px;background:var(--accent);border-radius:1px}.toggle-btn:hover:not(.active){color:var(--text-gold)}.type-selection{display:flex;justify-content:center;align-items:center;height:100%;padding:32px;background:var(--bg-page-gradient);position:relative}.type-selection:before{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 30% 70%,rgba(168,137,63,.03) 0%,transparent 40%),radial-gradient(circle at 70% 30%,rgba(168,137,63,.02) 0%,transparent 40%);pointer-events:none}.type-card{text-align:center;max-width:720px;width:100%;animation:cardReveal .4s cubic-bezier(.16,1,.3,1)}.type-card h2{font-family:Playfair Display,Georgia,serif;font-size:28px;font-weight:700;margin-bottom:8px}.type-card .form-subtitle{color:var(--text-muted);margin-bottom:36px;font-size:14px}.type-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px}.type-option{background:var(--bg-card);border:1.5px solid var(--border-light);border-radius:var(--radius-xl);padding:24px 20px;cursor:pointer;transition:var(--transition);box-shadow:var(--shadow-card)}.type-option:hover{border-color:var(--border-accent);box-shadow:var(--shadow-md),0 0 30px #a8893f14;transform:translateY(-4px)}.type-option:active{transform:translateY(-2px);box-shadow:var(--shadow-sm)}.type-option .type-icon{font-size:32px;margin-bottom:12px}.type-option h3{font-family:Playfair Display,Georgia,serif;font-size:15px;font-weight:700;margin-bottom:6px;color:var(--text-primary)}.type-option p{color:var(--text-muted);font-size:12px;line-height:1.4}.type-back{margin-top:28px}.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);animation:fadeIn .4s ease-out}.empty-state .icon{font-size:48px;margin-bottom:14px;opacity:.35;animation:iconFloat 4s ease-in-out infinite}@keyframes iconFloat{0%,to{transform:translateY(0)}50%{transform:translateY(-6px)}}.empty-state h3{font-family:Playfair Display,Georgia,serif;font-size:18px;margin-bottom:6px;color:var(--text-secondary)}.empty-state p{font-size:13px;letter-spacing:.3px}.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:1000;animation:overlayReveal .25s ease-out}@keyframes overlayReveal{0%{opacity:0}to{opacity:1}}.modal.modal-wide{max-width:560px}.modal{background:var(--bg-surface);border:1px solid var(--border-light);border-radius:var(--radius-xl);padding:32px;width:90%;max-width:420px;box-shadow:var(--shadow-lg),0 0 60px #0000000f;animation:modalReveal .3s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden}.modal:before{content:"";position:absolute;top:0;left:15%;right:15%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);border-radius:2px}@keyframes modalReveal{0%{opacity:0;transform:scale(.95) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}.modal h3{font-family:Playfair Display,Georgia,serif;font-size:20px;margin-bottom:12px}.modal .modal-buttons{display:flex;gap:12px;margin-top:20px}.modal .password-display{background:var(--bg-elevated);border:1px solid var(--border-light);border-radius:var(--radius-md);padding:14px 16px;font-family:JetBrains Mono,monospace;font-size:13px;word-break:break-all;line-height:1.6;color:var(--text-primary);margin-top:8px;position:relative;transition:border-color .2s ease}.modal .password-display:hover{border-color:var(--border-accent)}.field-copy-row{display:flex;align-items:center;gap:8px}.field-copy-row .password-display{flex:1;margin-top:0}.btn-copy{background:var(--bg-elevated);border:1px solid var(--border-light);border-radius:var(--radius-md);padding:8px 10px;cursor:pointer;font-size:14px;line-height:1;transition:all .2s ease;flex-shrink:0;margin-top:0}.btn-copy:hover{background:var(--accent);border-color:var(--accent)}.toast{position:fixed;bottom:24px;right:24px;background:var(--bg-surface);border:1px solid var(--border-light);border-radius:var(--radius-md);padding:12px 20px;box-shadow:var(--shadow-lg),0 0 40px #0000000a;animation:toastIn .35s cubic-bezier(.16,1,.3,1);z-index:2000;font-size:13px;font-weight:500;display:flex;align-items:center;gap:10px;min-width:200px}@keyframes toastIn{0%{opacity:0;transform:translate(30px) scale(.96)}to{opacity:1;transform:translate(0) scale(1)}}.toast.success{border-left:3px solid var(--success)}.toast.success:before{content:"\2713";display:flex;align-items:center;justify-content:center;width:20px;height:20px;background:rgba(22,163,74,.1);color:var(--success);border-radius:50%;font-size:11px;font-weight:700;flex-shrink:0}.toast.error{border-left:3px solid var(--danger)}.toast.error:before{content:"!";display:flex;align-items:center;justify-content:center;width:20px;height:20px;background:rgba(220,38,38,.1);color:var(--danger);border-radius:50%;font-size:12px;font-weight:700;flex-shrink:0}.mt-4{margin-top:16px}.text-sm{font-size:13px}.text-muted{color:var(--text-muted)}.settings-modal{max-width:500px}.settings-section{margin-top:20px}.settings-label{display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px}.settings-path-row{display:flex;align-items:center;gap:8px;margin-bottom:12px}.settings-path{flex:1;font-size:12px;padding:8px 12px;background:var(--bg-secondary, #f5f5f5);border-radius:6px;word-break:break-all;font-family:monospace;color:var(--text-muted)}.settings-actions{display:flex;gap:8px;margin-bottom:8px}.settings-hint{font-size:12px;color:var(--text-muted);margin:0}
+
+</style>
+<!-- built by build-frontend.mjs: css=1 js=1 -->
+</head>
+<body>
+<div id="splash">
+    <div class="splash-inner">
+        <div class="vault-ring vault-ring-1"></div>
+        <div class="vault-ring vault-ring-2"></div>
+        <div class="vault-ring vault-ring-3"></div>
+        <svg class="lock-svg" viewBox="0 0 64 64" fill="none">
+            <path class="lock-shackle" d="M22 28V20C22 13.4 27.4 8 34 8H30C36.6 8 42 13.4 42 20V28"
+                  stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+            <rect class="lock-body" x="16" y="28" width="32" height="26" rx="4"
+                  stroke="currentColor" stroke-width="3" fill="none"/>
+            <circle class="lock-hole" cx="32" cy="40" r="4"
+                    stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <line class="lock-keyway" x1="32" y1="44" x2="32" y2="48"
+                  stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <div class="splash-text">
+            <span class="splash-title">VAULT</span>
+            <span class="splash-sub">正在初始化安全环境...</span>
+        </div>
+    </div>
+</div>
+<div id="app"></div>
+
+</body>
+</html>
