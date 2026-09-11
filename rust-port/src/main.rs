@@ -17,6 +17,7 @@ mod rpc;
 mod settings;
 mod store;
 mod timefmt;
+mod tray;
 
 use std::sync::{Arc, Mutex};
 
@@ -48,6 +49,8 @@ enum UserEvent {
     },
     /// 工作线程返回结果
     Reply { id: u64, ok: bool, payload: String },
+    /// 托盘 / 托盘菜单请求
+    Tray(tray::TrayAction),
 }
 
 #[derive(Deserialize)]
@@ -111,6 +114,43 @@ fn main() {
         .build(&window)
         .expect("创建 WebView 失败");
 
+    // 系统托盘：关闭按钮不再退出，而是隐藏到托盘后台运行。
+    // 托盘创建失败（极罕见，仅 Shell 通知区不可用时）会降级为「关闭即退出」。
+    let tray = match tray::build(APP_ICON_PNG, "密码管理器") {
+        Ok(tray) => Some(tray),
+        Err(err) => {
+            eprintln!("警告: 创建托盘失败，将退化为关闭即退出: {err}");
+            None
+        }
+    };
+    let has_tray = tray.is_some();
+
+    // 托盘事件转发：左键单击 → 显示主窗口
+    if has_tray {
+        let tray_proxy = proxy.clone();
+        tray_icon::TrayIconEvent::set_event_handler(Some(move |event| {
+            if let tray_icon::TrayIconEvent::Click {
+                button: tray_icon::MouseButton::Left,
+                button_state: tray_icon::MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let _ = tray_proxy.send_event(UserEvent::Tray(tray::TrayAction::ShowWindow));
+            }
+        }));
+        let menu_proxy = proxy.clone();
+        tray_icon::menu::MenuEvent::set_event_handler(Some(move |event: tray_icon::menu::MenuEvent| {
+            let action = match event.id().as_ref() {
+                tray::MENU_ID_SHOW => Some(tray::TrayAction::ShowWindow),
+                tray::MENU_ID_QUIT => Some(tray::TrayAction::Quit),
+                _ => None,
+            };
+            if let Some(action) = action {
+                let _ = menu_proxy.send_event(UserEvent::Tray(action));
+            }
+        }));
+    }
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
@@ -119,12 +159,32 @@ fn main() {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
-                // 退出前清零密钥并关闭数据库
-                if let Ok(mut app) = app.lock() {
-                    app.shutdown();
+                if has_tray {
+                    // 关闭按钮 → 隐藏到托盘后台运行，不退出
+                    window.set_visible(false);
+                } else {
+                    // 无托盘退化：真正退出前清零密钥并关闭数据库
+                    if let Ok(mut app) = app.lock() {
+                        app.shutdown();
+                    }
+                    *control_flow = ControlFlow::Exit;
                 }
-                *control_flow = ControlFlow::Exit;
             }
+
+            Event::UserEvent(UserEvent::Tray(action)) => match action {
+                tray::TrayAction::ShowWindow => {
+                    window.set_visible(true);
+                    window.set_focus();
+                }
+                tray::TrayAction::Quit => {
+                    if let Ok(mut app) = app.lock() {
+                        app.shutdown();
+                    }
+                    // 退出后 event_loop 闭包被 drop，tray 随之释放，
+                    // Shell_NotifyIcon(NIM_DELETE) 由 tray-icon 在 Drop 里发出。
+                    *control_flow = ControlFlow::Exit;
+                }
+            },
 
             Event::UserEvent(UserEvent::Rpc { id, method, args }) => {
                 // 业务逻辑放到工作线程，避免 Argon2id / 数据库 / 文件对话框卡住界面
@@ -236,7 +296,7 @@ fn load_app_icon() -> Option<Icon> {
 }
 
 /// 解码 8 位 RGB/RGBA PNG 为 RGBA8
-fn decode_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+pub(crate) fn decode_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     let decoder = png::Decoder::new(bytes);
     let mut reader = decoder.read_info().ok()?;
     let mut buffer = vec![0u8; reader.output_buffer_size()];
@@ -264,7 +324,7 @@ fn decode_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
 }
 
 /// 整数倍盒式降采样
-fn downscale_rgba(rgba: &[u8], width: u32, height: u32, scale: u32) -> (u32, u32, Vec<u8>) {
+pub(crate) fn downscale_rgba(rgba: &[u8], width: u32, height: u32, scale: u32) -> (u32, u32, Vec<u8>) {
     let new_width = width / scale;
     let new_height = height / scale;
     let mut out = Vec::with_capacity((new_width * new_height * 4) as usize);
