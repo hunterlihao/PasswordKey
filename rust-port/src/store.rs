@@ -85,9 +85,12 @@ impl Store {
         let conn = Connection::open(db_path)
             .map_err(|e| format!("数据库打开失败: {e}"))?;
 
-        // journal_mode 会返回一行结果，需用 query_row 读取
-        conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get::<_, String>(0))
-            .map_err(|e| format!("开启 WAL 模式失败: {e}"))?;
+        // 使用 DELETE journal 模式（SQLite 默认）：修改时产生临时 -journal 文件，
+        // 修改完自动删除。这样 data/ 下只有 data.db 一个文件，干净。
+        // （WAL 模式读写并发性能更好，但会多出 -wal / -shm 两个常驻文件；
+        //  密码管理器是单用户低并发场景，DELETE 模式足够。）
+        conn.execute_batch("PRAGMA journal_mode=DELETE;")
+            .map_err(|e| format!("设置 journal_mode 失败: {e}"))?;
         conn.execute_batch("PRAGMA busy_timeout=5000;")
             .map_err(|e| format!("设置 busy_timeout 失败: {e}"))?;
         conn.execute_batch(SCHEMA)
@@ -96,7 +99,7 @@ impl Store {
         Ok(Store { conn })
     }
 
-    /// 关闭连接（触发 WAL checkpoint）
+    /// 关闭连接
     pub fn close(self) -> Result<(), String> {
         self.conn.close().map_err(|(_, e)| format!("关闭数据库失败: {e}"))
     }

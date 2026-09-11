@@ -515,7 +515,7 @@ impl App {
 
         let old_path = self.db_path.clone();
 
-        // 先关闭连接，触发 WAL checkpoint，避免只复制 data.db 而丢失未落盘的事务
+        // 先关闭连接，确保数据落盘
         if let Some(store) = self.store.take() {
             if let Err(e) = store.close() {
                 self.reopen(&old_path)?;
@@ -622,26 +622,12 @@ fn decrypt_secret(key: &Key, secret_bytes: &[u8]) -> Result<String, String> {
     }
 }
 
-/// 复制 SQLite 主文件及配套的 -wal / -shm，并限制副本权限
+/// 复制单个 SQLite 数据库文件到新位置，并限制副本权限。
+/// DELETE journal 模式下没有 -wal / -shm 旁车文件，只需复制主文件。
 pub fn copy_db_files(src_path: &Path, dst_path: &Path) -> Result<(), String> {
     let data = std::fs::read(src_path).map_err(|e| format!("无法读取当前数据库: {e}"))?;
     write_private(dst_path, &data)?;
-
-    for suffix in ["-wal", "-shm"] {
-        let src = with_suffix(src_path, suffix);
-        if !src.exists() {
-            continue;
-        }
-        let data = std::fs::read(&src).map_err(|e| format!("读取 {} 失败: {e}", src.display()))?;
-        write_private(&with_suffix(dst_path, suffix), &data)?;
-    }
     Ok(())
-}
-
-fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut os = path.as_os_str().to_os_string();
-    os.push(suffix);
-    PathBuf::from(os)
 }
 
 #[cfg(test)]
@@ -813,21 +799,20 @@ mod tests {
     }
 
     #[test]
-    fn copy_db_files_copies_wal_sidecars() {
-        let (mut app, dir) = temp_app("copy");
-        app.setup_master("pw").unwrap();
-        app.add_credential(sample_credential("a", "b")).unwrap();
-        // 人为造一个 -wal 文件，验证会被一起复制
-        let wal = with_suffix(&dir.join("data.db"), "-wal");
-        std::fs::write(&wal, b"wal-data").unwrap();
+    fn copy_db_files_copies_single_file() {
+        let dir = std::env::temp_dir().join("pm-app-test-copy-single");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("data.db");
+        std::fs::write(&src, b"sqlite data").unwrap();
 
-        let target = dir.join("copy").join("data.db");
-        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-        copy_db_files(&dir.join("data.db"), &target).unwrap();
+        let target_dir = dir.join("copy");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let target = target_dir.join("data.db");
+        copy_db_files(&src, &target).unwrap();
 
         assert!(target.exists());
-        assert!(with_suffix(&target, "-wal").exists());
-        assert_eq!(std::fs::read(with_suffix(&target, "-wal")).unwrap(), b"wal-data");
+        assert_eq!(std::fs::read(&target).unwrap(), b"sqlite data");
     }
 
     #[test]
