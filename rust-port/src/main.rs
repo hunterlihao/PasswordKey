@@ -69,6 +69,15 @@ fn main() {
     };
     let app = Arc::new(Mutex::new(app));
 
+    // 便携版：让 WebView2 的 profile 也落在数据目录里（必须在创建 WebView 之前设置）
+    {
+        let guard = app.lock().expect("初始化后不应被污染");
+        if let Err(err) = paths::apply_portable_webview_profile(guard.data_dir()) {
+            // 只是影响缓存位置，失败不阻塞启动
+            eprintln!("警告: {err}，将使用系统默认的 WebView2 数据目录");
+        }
+    }
+
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
 
@@ -84,7 +93,7 @@ fn main() {
     let host = WindowHost(window_hwnd(&window));
 
     let ipc_proxy = proxy.clone();
-    let webview = WebViewBuilder::new()
+    let builder = WebViewBuilder::new()
         .with_html(APP_HTML)
         .with_background_color((245, 240, 232, 255))
         .with_initialization_script(bridge_script())
@@ -96,7 +105,9 @@ fn main() {
                     args: message.args,
                 });
             }
-        })
+        });
+
+    let webview = with_browser_args(builder)
         .build(&window)
         .expect("创建 WebView 失败");
 
@@ -148,6 +159,36 @@ fn main() {
 
 fn to_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "null".to_string())
+}
+
+/// 组装 WebView2 的启动参数。
+///
+/// wry 默认只传 `--disable-features=...`，并且一旦通过 API 传参，
+/// WebView2 就会**忽略** `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 环境变量。
+/// 这里把该环境变量显式拼接进去，让 WebView2 的标准调试开关（例如
+/// `--remote-debugging-port=9222`、`--disable-gpu`）依然可用。
+fn with_browser_args(builder: WebViewBuilder<'_>) -> WebViewBuilder<'_> {
+    const WRYS_DEFAULT: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+    let mut args = String::from(WRYS_DEFAULT);
+
+    if let Ok(extra) = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
+        let extra = extra.trim();
+        if !extra.is_empty() {
+            args.push(' ');
+            args.push_str(extra);
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        use wry::WebViewBuilderExtWindows;
+        builder.with_additional_browser_args(args)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = args;
+        builder
+    }
 }
 
 /// 生成注入脚本：方法名清单以 `rpc::METHODS` 为唯一来源

@@ -83,6 +83,25 @@ fn ensure_writable_dir(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// WebView2 用户数据目录名
+pub const WEBVIEW_PROFILE_DIR: &str = "WebView2";
+
+/// WebView2 profile 目录（便携版把它也放在数据目录里，
+/// 避免在 %LOCALAPPDATA% 留下 WebView2 数据）
+pub fn webview_profile_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join(WEBVIEW_PROFILE_DIR)
+}
+
+/// 把 WebView2 的用户数据目录指向便携目录。
+/// WebView2 会读取 `WEBVIEW2_USER_DATA_FOLDER` 环境变量，
+/// 且必须在创建 WebView 环境之前设置。
+pub fn apply_portable_webview_profile(data_dir: &Path) -> Result<PathBuf, String> {
+    let dir = webview_profile_dir(data_dir);
+    fs::create_dir_all(&dir).map_err(|e| format!("创建 WebView2 数据目录失败: {e}"))?;
+    std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &dir);
+    Ok(dir)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,5 +131,17 @@ mod tests {
         let exe = std::env::current_exe().unwrap();
         let expected = exe.parent().unwrap().join(DATA_DIR_NAME);
         assert!(list.contains(&expected), "候选目录中应包含 exe 同级 data 目录");
+    }
+
+    #[test]
+    fn portable_webview_profile_creates_dir_and_sets_env() {
+        let dir = std::env::temp_dir().join("pm-paths-test-webview");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let profile = apply_portable_webview_profile(&dir).unwrap();
+        assert_eq!(profile, webview_profile_dir(&dir));
+        assert!(profile.is_dir());
+        assert_eq!(std::env::var("WEBVIEW2_USER_DATA_FOLDER").unwrap(), profile.to_string_lossy());
     }
 }

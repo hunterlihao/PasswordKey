@@ -59,6 +59,10 @@ impl App {
         }
     }
 
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
     pub fn db_path_string(&self) -> String {
         self.db_path.to_string_lossy().into_owned()
     }
@@ -221,7 +225,12 @@ impl App {
 
     // ===== 凭证读写 =====
 
+    /// 列表查询。与 Go 版不同的一点加固：锁定状态下不再返回任何元数据
+    /// （Go 版锁屏后仍能读到名称/URL，只有密码本身受保护）
     pub fn get_credentials(&self, cred_type: i32, keyword: &str) -> Vec<CredentialView> {
+        if !self.is_unlocked() {
+            return Vec::new();
+        }
         let Ok(store) = self.store() else {
             return Vec::new();
         };
@@ -233,6 +242,9 @@ impl App {
     }
 
     pub fn get_favorites(&self, keyword: &str) -> Vec<CredentialView> {
+        if !self.is_unlocked() {
+            return Vec::new();
+        }
         let Ok(store) = self.store() else {
             return Vec::new();
         };
@@ -243,10 +255,14 @@ impl App {
     }
 
     pub fn get_credential_view_by_id(&self, id: i64) -> Result<CredentialView, String> {
+        self.require_unlocked()?;
         Ok(self.store()?.get_credential(id)?.to_view())
     }
 
     pub fn get_credential_counts(&self) -> std::collections::BTreeMap<i32, i32> {
+        if !self.is_unlocked() {
+            return Default::default();
+        }
         self.store()
             .and_then(|s| s.count_by_type())
             .unwrap_or_default()
@@ -783,6 +799,21 @@ mod tests {
         assert_eq!(app.unlock("new-pw").unwrap(), ());
         assert_eq!(app.get_decrypted_secret_direct(1).unwrap(), "secret-a");
         assert_eq!(app.get_decrypted_secret_direct(2).unwrap(), "secret-b");
+    }
+
+    #[test]
+    fn locked_state_hides_metadata() {
+        let (mut app, _dir) = temp_app("locked-read");
+        app.setup_master("pw").unwrap();
+        app.add_credential(sample_credential("GitHub", "s")).unwrap();
+        assert_eq!(app.get_credentials(-1, "").len(), 1);
+
+        app.lock_key();
+        assert!(app.get_credentials(-1, "").is_empty(), "锁屏后不应返回列表");
+        assert!(app.get_favorites("").is_empty());
+        assert!(app.get_credential_counts().is_empty());
+        assert_eq!(app.get_credential_view_by_id(1).unwrap_err(), "未解锁");
+        assert_eq!(app.get_decrypted_secret_direct(1).unwrap_err(), "未解锁");
     }
 
     #[test]
