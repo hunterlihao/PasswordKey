@@ -844,22 +844,55 @@ function updateStrength(password) {
     });
 }
 
-window.copyToClipboard = function(text) {
-    navigator.clipboard.writeText(text).catch(() => {
-        showToast('复制失败', 'error');
-        return;
+// 写剪贴板统一入口：优先用 Async Clipboard API（需要安全上下文），
+// WebView2 通过 with_html(NavigateToString) 加载时不是安全上下文，
+// navigator.clipboard 为 undefined，降级到 execCommand('copy')（同步，
+// 依赖用户手势，点击按钮即满足）。
+// 返回 Promise，成功 resolve，失败 reject。
+function writeClipboardText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+    }
+    return new Promise((resolve, reject) => {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        // 移出可视区域，避免页面跳动
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(textarea);
+        if (ok) { resolve(); } else { reject(new Error('execCommand copy 失败')); }
     });
-    showToast('已复制到剪贴板，30秒后自动清除', 'success');
+}
+
+window.copyToClipboard = function(text) {
+    writeClipboardText(text).then(() => {
+        showToast('已复制到剪贴板，30秒后自动清除', 'success');
+        scheduleClipboardClear(text);
+    }).catch(() => {
+        showToast('复制失败', 'error');
+    });
+};
+
+// 30 秒后清空剪贴板（若内容仍是本次复制的值）。
+// execCommand 降级模式下无法读取剪贴板做比较，跳过。
+function scheduleClipboardClear(text) {
     if (clipboardClearTimer) clearTimeout(clipboardClearTimer);
     clipboardClearTimer = setTimeout(() => {
-        navigator.clipboard.readText().then(current => {
-            if (current === text) {
-                navigator.clipboard.writeText('').catch(() => {});
-            }
-        }).catch(() => {});
+        if (navigator.clipboard && navigator.clipboard.readText) {
+            navigator.clipboard.readText().then(current => {
+                if (current === text) {
+                    navigator.clipboard.writeText('').catch(() => {});
+                }
+            }).catch(() => {});
+        }
         clipboardClearTimer = null;
     }, CLIPBOARD_CLEAR_DELAY);
-};
+}
 
 window.toggleFavorite = async function(id) {
     try {
@@ -1192,8 +1225,11 @@ window.showSettings = async function() {
 window.copyPath = function() {
     const pathEl = document.getElementById('db-path-display');
     if (pathEl) {
-        navigator.clipboard.writeText(pathEl.textContent);
-        showToast('已复制到剪贴板', 'success');
+        writeClipboardText(pathEl.textContent).then(() => {
+            showToast('已复制到剪贴板', 'success');
+        }).catch(() => {
+            showToast('复制失败', 'error');
+        });
     }
 };
 
