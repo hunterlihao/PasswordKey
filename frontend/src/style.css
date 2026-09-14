@@ -1509,3 +1509,277 @@ body::after {
     color: var(--text-muted);
     margin: 0;
 }
+
+/* 设置项里的下拉选择（如自动锁定时长） */
+.settings-select {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+    outline: none;
+}
+.settings-select:hover {
+    border-color: var(--border-accent);
+}
+.settings-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--input-focus);
+}
+
+/* ===== 安全体检 ===== */
+.audit-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px 32px;
+}
+
+/* 总分卡片 */
+.audit-score-card {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 24px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+}
+.audit-score-ring {
+    width: 88px;
+    height: 88px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    border: 4px solid var(--border-medium);
+    background: var(--bg-elevated);
+}
+.audit-score-ring .audit-score-num {
+    font-family: 'Playfair Display', serif;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1;
+    align-self: center;
+    color: var(--text-primary);
+}
+.audit-score-ring .audit-score-unit {
+    font-size: 12px;
+    color: var(--text-muted);
+    align-self: flex-end;
+    margin-bottom: 8px;
+}
+.audit-score-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.audit-score-level {
+    font-size: 20px;
+    font-weight: 700;
+}
+.audit-score-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.score-good { color: var(--success); }
+.score-fair { color: var(--accent); }
+.score-warn { color: var(--warning); }
+.score-bad  { color: var(--danger); }
+.audit-score-ring.score-good { border-color: var(--success); }
+.audit-score-ring.score-fair { border-color: var(--accent); }
+.audit-score-ring.score-warn { border-color: var(--warning); }
+.audit-score-ring.score-bad  { border-color: var(--danger); }
+
+/* 统计小卡 */
+.audit-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 14px;
+}
+.audit-stat {
+    padding: 14px 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    text-align: center;
+    transition: var(--transition);
+}
+.audit-stat.has-issue {
+    border-color: var(--border-accent);
+    background: var(--accent-glow);
+}
+.audit-stat-num {
+    font-family: 'Playfair Display', serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+.audit-stat.has-issue .audit-stat-num {
+    color: var(--danger);
+}
+.audit-stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* 分组区块 */
+.audit-section {
+    margin-top: 26px;
+}
+.audit-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+.audit-section-count {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    padding: 1px 9px;
+}
+.audit-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.dot-danger { background: var(--danger); }
+.dot-warn   { background: var(--warning); }
+
+.audit-hint {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin: 0 0 12px;
+}
+
+/* 重复密码分组外壳 */
+.audit-group {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+}
+.audit-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.audit-group-mask {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 3px 10px;
+}
+.audit-group-count {
+    font-size: 12px;
+    color: var(--warning);
+    font-weight: 600;
+}
+
+/* 条目列表 */
+.audit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.audit-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+}
+.audit-item:hover {
+    border-color: var(--border-accent);
+    box-shadow: var(--shadow-sm);
+    transform: translateX(2px);
+}
+.audit-item-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+.audit-item-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+.audit-item-name {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.audit-item-badge {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg-elevated);
+    border-radius: 999px;
+    padding: 1px 8px;
+    flex-shrink: 0;
+}
+.audit-item-detail {
+    font-size: 12px;
+    color: var(--danger);
+    flex-shrink: 0;
+}
+.audit-item-arrow {
+    color: var(--text-muted);
+    font-size: 18px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+/* 全部通过 */
+.audit-clean {
+    margin-top: 26px;
+    text-align: center;
+    padding: 32px 20px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+}
+.audit-clean .icon {
+    font-size: 40px;
+    margin-bottom: 10px;
+}
+.audit-clean h3 {
+    font-size: 16px;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+.audit-clean p {
+    font-size: 13px;
+    color: var(--text-muted);
+}

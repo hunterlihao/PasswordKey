@@ -1,6 +1,6 @@
 import './style.css';
 
-import { IsMasterSet, SetupMaster, Unlock, Lock, GetCredentials, GetCredentialViewById, GetFavorites, GetCredentialCounts, AddCredential, UpdateCredential, DeleteCredential, DeleteCredentials, ToggleFavorite, GetDecryptedSecret, GetDecryptedSecretDirect, GeneratePassword, CheckPasswordStrength, ChangeMasterPassword, ExportData, ExportSingle, ImportData, DownloadJSONTemplate, DownloadExcelTemplate, GetDbPath, ChangeDbPath, ResetDbPath } from '../wailsjs/go/main/App';
+import { IsMasterSet, SetupMaster, Unlock, Lock, GetCredentials, GetCredentialViewById, GetFavorites, GetCredentialCounts, AddCredential, UpdateCredential, DeleteCredential, DeleteCredentials, ToggleFavorite, GetDecryptedSecret, GetDecryptedSecretDirect, GeneratePassword, CheckPasswordStrength, ChangeMasterPassword, ExportData, ExportSingle, ImportData, DownloadJSONTemplate, DownloadExcelTemplate, GetDbPath, ChangeDbPath, ResetDbPath, GetAuditReport, GetAutoLockMinutes, SetAutoLockMinutes } from '../wailsjs/go/main/App';
 
 let currentView = 'login';
 let currentFilter = -1;
@@ -182,6 +182,7 @@ window.showMainView = async function() {
                 </div>
                 <div class="header-actions">
                     <button class="btn btn-primary btn-small" onclick="showTypeSelection()">+ 新增</button>
+                    <button class="btn btn-ghost btn-small" onclick="showAuditView()">安全体检</button>
                     <button class="btn btn-ghost btn-small" id="batch-delete-btn" onclick="toggleSelectMode()">批量删除</button>
                     <button class="btn btn-ghost btn-small" onclick="exportData()">导出</button>
                     <button class="btn btn-ghost btn-small" onclick="importData()">导入</button>
@@ -1187,20 +1188,215 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
+// ===== 安全体检 =====
+
+// 评分对应的等级文案与配色
+function scoreLevel(score) {
+    if (score >= 90) return { text: '优秀', cls: 'score-good' };
+    if (score >= 70) return { text: '良好', cls: 'score-fair' };
+    if (score >= 50) return { text: '一般', cls: 'score-warn' };
+    return { text: '需要改进', cls: 'score-bad' };
+}
+
+window.showAuditView = async function() {
+    currentView = 'audit';
+
+    document.querySelector('#app').innerHTML = `
+        <div class="app-container">
+            <div class="header">
+                <div class="header-left">
+                    <button class="btn btn-ghost btn-small" onclick="showMainView()">← 返回</button>
+                    <span class="header-title">安全体检</span>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-ghost btn-small" onclick="showAuditView()">重新扫描</button>
+                </div>
+            </div>
+            <div class="audit-body" id="audit-body">
+                <div class="empty-state">
+                    <div class="icon">🔍</div>
+                    <h3>正在扫描...</h3>
+                </div>
+            </div>
+        </div>
+    `;
+
+    let report;
+    try {
+        report = await GetAuditReport();
+    } catch (err) {
+        document.getElementById('audit-body').innerHTML = `
+            <div class="empty-state">
+                <div class="icon">⚠️</div>
+                <h3>扫描失败</h3>
+                <p>${escapeHtml(String(err))}</p>
+            </div>`;
+        return;
+    }
+
+    renderAuditReport(report);
+};
+
+function renderAuditReport(report) {
+    const body = document.getElementById('audit-body');
+    if (!body) return;
+
+    const level = scoreLevel(report.score);
+    const total = report.total || 0;
+
+    // 总分仪表盘
+    let html = `
+        <div class="audit-score-card">
+            <div class="audit-score-ring ${level.cls}">
+                <span class="audit-score-num">${report.score}</span>
+                <span class="audit-score-unit">分</span>
+            </div>
+            <div class="audit-score-meta">
+                <div class="audit-score-level ${level.cls}">${level.text}</div>
+                <div class="audit-score-sub">共 ${total} 条凭证</div>
+            </div>
+        </div>
+        <div class="audit-stats">
+            <div class="audit-stat ${report.weak_count > 0 ? 'has-issue' : ''}">
+                <div class="audit-stat-num">${report.weak_count}</div>
+                <div class="audit-stat-label">弱密码</div>
+            </div>
+            <div class="audit-stat ${report.duplicate_group_count > 0 ? 'has-issue' : ''}">
+                <div class="audit-stat-num">${report.duplicate_group_count}</div>
+                <div class="audit-stat-label">重复密码组</div>
+            </div>
+            <div class="audit-stat">
+                <div class="audit-stat-num">${report.duplicate_item_count}</div>
+                <div class="audit-stat-label">涉及重复的凭证</div>
+            </div>
+        </div>
+    `;
+
+    if (total === 0) {
+        body.innerHTML = html + `
+            <div class="empty-state">
+                <div class="icon">📭</div>
+                <h3>还没有凭证</h3>
+                <p>添加凭证后再来做安全体检吧</p>
+            </div>`;
+        return;
+    }
+
+    // 弱密码分组
+    if (report.weak_count > 0) {
+        html += `
+            <div class="audit-section">
+                <div class="audit-section-title">
+                    <span class="audit-dot dot-danger"></span>
+                    弱密码 <span class="audit-section-count">${report.weak_count}</span>
+                </div>
+                <div class="audit-list">
+                    ${report.weak.map(it => `
+                        <div class="audit-item" onclick="editCredentialFromAudit(${it.id})">
+                            <span class="audit-item-icon">${getCredIcon(it.type)}</span>
+                            <div class="audit-item-main">
+                                <span class="audit-item-name">${escapeHtml(it.name)}</span>
+                                <span class="audit-item-badge">${getCredBadge(it.type)}</span>
+                            </div>
+                            <span class="audit-item-detail">${escapeHtml(it.detail || '')}</span>
+                            <span class="audit-item-arrow">›</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // 重复密码分组
+    if (report.duplicate_group_count > 0) {
+        html += `
+            <div class="audit-section">
+                <div class="audit-section-title">
+                    <span class="audit-dot dot-warn"></span>
+                    重复使用的密码 <span class="audit-section-count">${report.duplicate_group_count} 组</span>
+                </div>
+                <p class="audit-hint">同一个密码用在多个地方，一旦其中一处泄露，其余账号都会受影响。建议为每个账号设置独立密码。</p>
+                ${report.duplicate_groups.map(g => `
+                    <div class="audit-group">
+                        <div class="audit-group-head">
+                            <code class="audit-group-mask">${escapeHtml(g.masked)}</code>
+                            <span class="audit-group-count">${g.items.length} 处使用</span>
+                        </div>
+                        <div class="audit-list">
+                            ${g.items.map(it => `
+                                <div class="audit-item" onclick="editCredentialFromAudit(${it.id})">
+                                    <span class="audit-item-icon">${getCredIcon(it.type)}</span>
+                                    <div class="audit-item-main">
+                                        <span class="audit-item-name">${escapeHtml(it.name)}</span>
+                                        <span class="audit-item-badge">${getCredBadge(it.type)}</span>
+                                    </div>
+                                    <span class="audit-item-arrow">›</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    // 全部通过
+    if (report.weak_count === 0 && report.duplicate_group_count === 0) {
+        html += `
+            <div class="audit-clean">
+                <div class="icon">✅</div>
+                <h3>没有发现问题</h3>
+                <p>所有密码都达到了强度要求，且没有重复使用。</p>
+            </div>
+        `;
+    }
+
+    body.innerHTML = html;
+}
+
+// 从体检结果跳转到对应凭证的编辑页
+window.editCredentialFromAudit = async function(id) {
+    await window.editCredential(id);
+};
+
 window.showSettings = async function() {
     let dbPath = '';
     try {
         dbPath = await GetDbPath();
     } catch (_) {}
 
+    let autoLock = 5;
+    try {
+        autoLock = await GetAutoLockMinutes();
+    } catch (_) {}
+
     const defaultDir = dbPath.replace(/[\\\/][^\\\/]+$/, '');
     const isCustom = !dbPath.includes('AppData\\Roaming\\PasswordManager') && !dbPath.includes('AppData/Roaming/PasswordManager');
+
+    // 自动锁定时长选项（与后端的白名单保持一致）
+    const lockOptions = [
+        { v: 1, label: '1 分钟' },
+        { v: 5, label: '5 分钟' },
+        { v: 10, label: '10 分钟' },
+        { v: 15, label: '15 分钟' },
+        { v: 30, label: '30 分钟' },
+        { v: 0, label: '永不' },
+    ];
 
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
         <div class="modal settings-modal">
             <h3>设置</h3>
+            <div class="settings-section">
+                <label class="settings-label">闲置自动锁定</label>
+                <div class="settings-path-row">
+                    <select class="settings-select" id="auto-lock-select" onchange="changeAutoLock(this.value)">
+                        ${lockOptions.map(o => `<option value="${o.v}"${o.v === autoLock ? ' selected' : ''}>${o.label}</option>`).join('')}
+                    </select>
+                </div>
+                <p class="settings-hint">超过设定时长无任何键鼠操作时自动锁定。<br>按系统级空闲时间计算，看视频、离开电脑都会被计入。</p>
+            </div>
             <div class="settings-section">
                 <label class="settings-label">数据库存储位置</label>
                 <div class="settings-path-row">
@@ -1220,6 +1416,16 @@ window.showSettings = async function() {
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+};
+
+window.changeAutoLock = async function(value) {
+    const minutes = parseInt(value, 10);
+    try {
+        await SetAutoLockMinutes(minutes);
+        showToast(minutes === 0 ? '已关闭自动锁定' : `闲置 ${minutes} 分钟后自动锁定`, 'success');
+    } catch (err) {
+        showToast('设置失败: ' + err, 'error');
+    }
 };
 
 window.copyPath = function() {

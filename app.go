@@ -32,6 +32,10 @@ type App struct {
 	// quitting 标记用户已明确要求退出（托盘菜单「退出」）。
 	// OnBeforeClose 依赖它区分「关闭窗口（只隐藏）」与「真正退出」。
 	quitting atomic.Bool
+	// autoLockStop 用于通知自动锁定监控协程退出。
+	autoLockStop chan struct{}
+	// autoLockOnce 保证监控协程只启动一次。
+	autoLockOnce sync.Once
 }
 
 func NewApp() *App {
@@ -133,9 +137,16 @@ func (a *App) startup(ctx context.Context) {
 	// 托盘放在最后初始化：托盘菜单的「显示主窗口」「立即锁定」都依赖
 	// a.ctx 与 a.store 已经就绪，且需要 Wails 主消息循环已经起来。
 	a.initTray()
+
+	// 闲置自动锁定监控：独立协程轮询系统级空闲时长。
+	// 放在托盘之后启动，保证锁定后走 WindowReload 时前端与窗口都已就绪。
+	a.startAutoLockMonitor()
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	// 先停自动锁定监控，避免退出过程中它还在访问已关闭的资源。
+	a.stopAutoLockMonitor()
+
 	a.mu.Lock()
 	if a.key != nil {
 		for i := range a.key {
@@ -157,6 +168,36 @@ func (a *App) shutdown(ctx context.Context) {
 // GetDbPath 返回当前数据库路径
 func (a *App) GetDbPath() string {
 	return a.dbPath
+}
+
+// GetAutoLockMinutes 返回当前自动锁定时长（分钟）。0 表示永不自动锁定。
+func (a *App) GetAutoLockMinutes() int {
+	return a.autoLockMinutes()
+}
+
+// SetAutoLockMinutes 设置自动锁定时长（分钟）并持久化到配置文件。
+// 传入 0 表示关闭自动锁定。仅接受预设的白名单值，避免前端传入异常数值
+// 导致配置文件被写坏。
+func (a *App) SetAutoLockMinutes(minutes int) error {
+	valid := map[int]bool{0: true, 1: true, 5: true, 10: true, 15: true, 30: true}
+	if !valid[minutes] {
+		return fmt.Errorf("不支持的锁定时长: %d 分钟", minutes)
+	}
+
+	a.mu.Lock()
+	if a.settings == nil {
+		a.mu.Unlock()
+		return errors.New("配置未初始化")
+	}
+	a.settings.AutoLockMinutes = &minutes
+	s := a.settings
+	dir := a.settingsDir
+	a.mu.Unlock()
+
+	if err := s.Save(dir); err != nil {
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
+	return nil
 }
 
 // ChangeDbPath 更改数据库存储位置

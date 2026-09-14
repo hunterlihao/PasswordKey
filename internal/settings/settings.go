@@ -9,8 +9,24 @@ import (
 
 const settingsFile = "settings.json"
 
+// DefaultAutoLockMinutes 默认自动锁定时长（分钟）。
+// 旧版配置文件没有该字段时回落到此值。
+const DefaultAutoLockMinutes = 5
+
 type Settings struct {
 	DbPath string `json:"db_path,omitempty"`
+	// AutoLockMinutes 闲置自动锁定时长（分钟）。0 表示永不自动锁定。
+	// 用指针以区分「未设置」（nil，回落默认值）与「显式设为 0」（永不锁定）。
+	AutoLockMinutes *int `json:"auto_lock_minutes,omitempty"`
+}
+
+// EffectiveAutoLockMinutes 返回生效的自动锁定时长（分钟）。
+// 未设置时返回默认值；显式设为 0 表示永不锁定。
+func (s *Settings) EffectiveAutoLockMinutes() int {
+	if s == nil || s.AutoLockMinutes == nil {
+		return DefaultAutoLockMinutes
+	}
+	return *s.AutoLockMinutes
 }
 
 func Load(dir string) (*Settings, error) {
