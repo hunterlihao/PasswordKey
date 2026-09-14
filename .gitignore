@@ -16,6 +16,14 @@ frontend/package.json.md5
 # Claude Code
 .claude/
 
+# WorkBuddy AI（本地工作区数据，不入库）
+.workbuddy/
+.workbuddy-ai/
+
+# Rust 遗留临时文件
+_procs.txt
+_commit_msg.txt
+
 # 测试文件
 test_import.json
 

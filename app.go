@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"password/internal/crypto"
@@ -21,13 +22,16 @@ import (
 )
 
 type App struct {
-	ctx               context.Context
-	store             *store.Store
-	key               []byte
-	mu                sync.RWMutex
-	settingsDir       string
-	dbPath            string
-	settings          *settings.Settings
+	ctx         context.Context
+	store       *store.Store
+	key         []byte
+	mu          sync.RWMutex
+	settingsDir string
+	dbPath      string
+	settings    *settings.Settings
+	// quitting 标记用户已明确要求退出（托盘菜单「退出」）。
+	// OnBeforeClose 依赖它区分「关闭窗口（只隐藏）」与「真正退出」。
+	quitting atomic.Bool
 }
 
 func NewApp() *App {
@@ -125,6 +129,10 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.store = store
+
+	// 托盘放在最后初始化：托盘菜单的「显示主窗口」「立即锁定」都依赖
+	// a.ctx 与 a.store 已经就绪，且需要 Wails 主消息循环已经起来。
+	a.initTray()
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -140,6 +148,10 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.store != nil {
 		a.store.Close()
 	}
+
+	// 兜底收起托盘图标：正常退出路径已由 quitApp 处理，
+	// 这里覆盖异常退出（如系统注销）的情况，避免通知区残留图标。
+	stopTray()
 }
 
 // GetDbPath 返回当前数据库路径
