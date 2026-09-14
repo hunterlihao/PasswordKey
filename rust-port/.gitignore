@@ -1,8 +1,0 @@
-# Rust 构建产物
-/target
-
-# 前端构建中间产物（不入库）
-/frontend-dist-tmp
-
-# 便携版输出目录
-/dist
