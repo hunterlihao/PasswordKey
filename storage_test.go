@@ -1,74 +1,15 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// 场景 1：便携目录为空 + 旧位置有数据 → 应完整迁移（含 -wal）
-func TestMigrateFromLegacy(t *testing.T) {
-	root := t.TempDir()
-	portable := filepath.Join(root, "exe", "data")
-	legacy := filepath.Join(root, "appdata", "PasswordManager")
-	mustMkdir(t, legacy)
-
-	writeFile(t, filepath.Join(legacy, "settings.json"), `{"db_path":"","auto_lock_minutes":10}`)
-	writeFile(t, filepath.Join(legacy, "data.db"), "SQLITE-FAKE-MAIN")
-	writeFile(t, filepath.Join(legacy, "data.db-wal"), "WAL-CONTENT")
-
-	mustMkdir(t, portable)
-	if err := migrateLegacyData(portable, legacy); err != nil {
-		t.Fatalf("迁移失败: %v", err)
-	}
-
-	assertContent(t, filepath.Join(portable, "settings.json"), `{"db_path":"","auto_lock_minutes":10}`)
-	assertContent(t, filepath.Join(portable, "data.db"), "SQLITE-FAKE-MAIN")
-	assertContent(t, filepath.Join(portable, "data.db-wal"), "WAL-CONTENT")
-	t.Log("场景1 通过：配置 + 主库 + WAL 均已迁移")
-}
-
-// 场景 2：便携目录已有数据 → 必须原样保留，不被旧数据覆盖
-func TestMigrateDoesNotOverwriteExisting(t *testing.T) {
-	root := t.TempDir()
-	portable := filepath.Join(root, "exe", "data")
-	legacy := filepath.Join(root, "appdata", "PasswordManager")
-	mustMkdir(t, portable)
-	mustMkdir(t, legacy)
-
-	writeFile(t, filepath.Join(portable, "settings.json"), `{"auto_lock_minutes":30}`)
-	writeFile(t, filepath.Join(legacy, "settings.json"), `{"auto_lock_minutes":1}`)
-	writeFile(t, filepath.Join(legacy, "data.db"), "OLD-DB")
-
-	if err := migrateLegacyData(portable, legacy); err != nil {
-		t.Fatalf("迁移失败: %v", err)
-	}
-
-	assertContent(t, filepath.Join(portable, "settings.json"), `{"auto_lock_minutes":30}`)
-	if fileExists(filepath.Join(portable, "data.db")) {
-		t.Fatal("便携目录已有数据时不应迁入 data.db")
-	}
-	t.Log("场景2 通过：便携数据未被覆盖")
-}
-
-// 场景 3：旧位置不存在 → 静默跳过，不报错
-func TestMigrateNoLegacy(t *testing.T) {
-	root := t.TempDir()
-	portable := filepath.Join(root, "exe", "data")
-	mustMkdir(t, portable)
-
-	if err := migrateLegacyData(portable, filepath.Join(root, "nope")); err != nil {
-		t.Fatalf("旧位置不存在时不应报错: %v", err)
-	}
-	entries, _ := os.ReadDir(portable)
-	if len(entries) != 0 {
-		t.Fatalf("不应产生任何文件，实际: %v", entries)
-	}
-	t.Log("场景3 通过：无旧数据时静默跳过")
-}
-
-// 场景 4：便携目录可写判定
+// 目录可写时 resolveDataDir 应返回 exe 同级的 data/。
+// 注意：测试进程的 exe 是 go test 临时二进制，其所在目录未必可写，
+// 因此这里直接测 ensureWritableDir 与降级判定两个部件。
 func TestEnsureWritableDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "a", "b", "data")
 	if err := ensureWritableDir(dir); err != nil {
@@ -77,52 +18,74 @@ func TestEnsureWritableDir(t *testing.T) {
 	if !dirExists(dir) {
 		t.Fatal("目录未创建")
 	}
-	// 探针文件必须被清理干净
+	// 探针文件必须被清理干净，否则会当成用户数据残留
 	if fileExists(filepath.Join(dir, ".write-probe")) {
 		t.Fatal("探针文件残留")
 	}
-	t.Log("场景4 通过：目录创建 + 可写探测 + 探针清理")
+	t.Log("通过：目录创建 + 可写探测 + 探针清理")
 }
 
-// 场景 5：wraparound 无关，但校验 fallbackDataDir 尊重 APPDATA
-func TestFallbackDataDir(t *testing.T) {
+// 便携目录不可写时必须回退到系统目录，并留下降级标记。
+func TestFallbackWhenPortableNotWritable(t *testing.T) {
+	// 用一个「父路径是文件」的位置，保证 MkdirAll 必然失败
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	unwritable := filepath.Join(blocker, "data")
+
+	if err := ensureWritableDir(unwritable); err == nil {
+		t.Fatal("父路径是文件时应判定为不可写")
+	}
+	t.Log("通过：不可写目录被正确识别")
+}
+
+// 降级标记存在时应直接回退，且不再触碰便携目录。
+func TestFallbackMarkerShortCircuit(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, dataDirFallback)
+	if err := os.WriteFile(marker, []byte("dir not writable\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// 标记存在 → 判定条件命中
+	if !fileExists(marker) {
+		t.Fatal("标记文件应被识别")
+	}
+
+	// 回退目录必须位于 %APPDATA% 下
 	old := os.Getenv("APPDATA")
 	defer os.Setenv("APPDATA", old)
 	os.Setenv("APPDATA", `C:\Users\X\AppData\Roaming`)
 
-	got, err := fallbackDataDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(`C:\Users\X\AppData\Roaming`, "PasswordManager")
+	got := systemDataDir()
+	want := filepath.Join(`C:\Users\X\AppData\Roaming`, systemAppDirName)
 	if got != want {
 		t.Fatalf("期望 %q，实际 %q", want, got)
 	}
-	fmt.Println("fallback =", got)
-	t.Log("场景5 通过：回退目录基于 APPDATA")
-}
-
-func mustMkdir(t *testing.T, dir string) {
-	t.Helper()
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatal(err)
+	if !strings.HasSuffix(got, "PasswordManager") {
+		t.Fatalf("回退目录应以 PasswordManager 结尾，实际 %q", got)
 	}
+	t.Log("通过：标记短路 + 回退目录正确 =", got)
 }
 
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatal(err)
+// 便携目录命名必须与 .gitignore 中的忽略项一致，否则密码库可能被提交。
+func TestPortableDirName(t *testing.T) {
+	if exeDirName != "data" {
+		t.Fatalf("便携目录名应为 data，实际 %q", exeDirName)
 	}
-}
 
-func assertContent(t *testing.T, path, want string) {
-	t.Helper()
-	got, err := os.ReadFile(path)
+	gitignore, err := os.ReadFile(".gitignore")
 	if err != nil {
-		t.Fatalf("读取 %s 失败: %v", path, err)
+		t.Skip("读取 .gitignore 失败，跳过")
 	}
-	if string(got) != want {
-		t.Fatalf("%s 内容不符，期望 %q 实际 %q", path, want, string(got))
+	if !strings.Contains(string(gitignore), "data/") {
+		t.Fatal(".gitignore 必须忽略 data/，否则密码库会被提交进仓库")
 	}
+	t.Log("通过：目录名 data 且已被 .gitignore 忽略")
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }

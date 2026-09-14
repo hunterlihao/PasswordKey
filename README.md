@@ -117,8 +117,8 @@ password/
 数据目录优先选在 **exe 同级的 `data/`**，配置（`settings.json`）与密码库（`data.db`）都在其中。
 把 exe 和 `data/` 一起拷走即可在另一台机器上继续使用，不写注册表、不留系统目录残留。
 
-- **首次启用**：若 `data/` 尚不存在数据，而旧版 `%APPDATA%\PasswordManager` 有数据，
-  会自动把配置与数据库（含 `-wal`/`-shm`）复制一份过来。旧目录保持不动，可自行删除。
+- **不读取历史数据**：启动时只认 `data/` 目录，为空则直接新建密码库。
+  旧版 `%APPDATA%\PasswordManager` 下的数据不会被读取或迁移，可自行删除。
 - **自动回退**：若程序装在 `C:\Program Files` 等只读位置，会自动改回
   `%APPDATA%\PasswordManager`，并在 `data/` 留下 `system_dir` 标记，
   之后不再反复尝试。设置页会显示当前处于「便携版」还是「系统目录」。

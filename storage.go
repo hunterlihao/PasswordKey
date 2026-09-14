@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 )
@@ -11,12 +9,12 @@ import (
 // exeDirName 便携版数据目录名。放在 exe 同级，整个目录可整体拷到 U 盘运行。
 const exeDirName = "data"
 
-// legacyAppDirName 旧版的 %APPDATA% 子目录名，仅用于一次性迁移。
-const legacyAppDirName = "PasswordManager"
-
-// dataDirFallback 带回退的系统数据目录，仅用于记录了「降级为系统版」。
-// 一旦标记存在就不再尝试便携目录，避免在只读目录场景下反复弹 UAC 或告警。
+// dataDirFallback 回退标记文件名。便携目录不可写时会留下它，
+// 后续启动直接走系统目录，不再反复尝试（避免每次弹 UAC 或告警）。
 const dataDirFallback = "system_dir"
+
+// systemAppDirName 回退时使用的 %APPDATA% 子目录名。
+const systemAppDirName = "PasswordManager"
 
 // resolveDataDir 解析应用数据目录，并保证可写。
 //
@@ -24,7 +22,8 @@ const dataDirFallback = "system_dir"
 // C:\Program Files、U 盘被写保护），则回退到 %APPDATA%\PasswordManager，
 // 并在便携目录留下一个标记文件，让后续启动直接走回退路径。
 //
-// 首次启用便携模式时会从旧位置一次性迁移配置与数据库。
+// 不读取也不迁移任何历史数据：目录为空时由 store 直接建新库。
+// 返回 (便携目录, 实际使用的数据目录)。
 func resolveDataDir() (portableDir string, appDir string, err error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -34,31 +33,19 @@ func resolveDataDir() (portableDir string, appDir string, err error) {
 	if resolved, evalErr := filepath.EvalSymlinks(exe); evalErr == nil {
 		exe = resolved
 	}
-	exeDir := filepath.Dir(exe)
 
-	fallback, err := fallbackDataDir()
-	if err != nil {
-		return "", "", err
-	}
-
-	portableDir = filepath.Join(exeDir, exeDirName)
+	portableDir = filepath.Join(filepath.Dir(exe), exeDirName)
 
 	// 已有降级标记：不再打扰便携目录
-	if _, statErr := os.Stat(filepath.Join(portableDir, dataDirFallback)); statErr == nil {
-		return portableDir, fallback, nil
+	if fileExists(filepath.Join(portableDir, dataDirFallback)) {
+		return portableDir, systemDataDir(), nil
 	}
 
 	if err := ensureWritableDir(portableDir); err != nil {
-		// 便携目录不可用：留标记（能留则留）并回退
+		// 便携目录不可用：尽量留下标记再回退
 		_ = os.MkdirAll(portableDir, 0700)
 		_ = os.WriteFile(filepath.Join(portableDir, dataDirFallback), []byte(err.Error()+"\n"), 0600)
-		return portableDir, fallback, nil
-	}
-
-	// 便携目录可用：首次启用时从旧位置迁移一次
-	if err := migrateLegacyData(portableDir, fallback); err != nil {
-		// 迁移失败不阻断启动，仅提示；用户仍可手动拷贝
-		return portableDir, portableDir, nil
+		return portableDir, systemDataDir(), nil
 	}
 
 	return portableDir, portableDir, nil
@@ -82,93 +69,20 @@ func ensureWritableDir(dir string) error {
 	return nil
 }
 
-// fallbackDataDir 返回旧版使用的 %APPDATA%\PasswordManager 路径。
-func fallbackDataDir() (string, error) {
+// systemDataDir 返回回退用的 %APPDATA%\PasswordManager 路径。
+func systemDataDir() string {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", err
+			return filepath.Join(".", systemAppDirName)
 		}
 		appData = filepath.Join(home, "AppData", "Roaming")
 	}
-	return filepath.Join(appData, legacyAppDirName), nil
-}
-
-// migrateLegacyData 首次启用便携版时，把旧位置的数据搬到便携目录。
-//
-// 触发条件：便携目录尚无数据（没有 settings.json 也没有 data.db），
-// 且旧位置确实存在数据。两个条件缺一不可 —— 否则会把便携目录里
-// 已经用起来的数据覆盖掉。
-func migrateLegacyData(portableDir, legacyDir string) error {
-	if portableDir == legacyDir {
-		return nil
-	}
-
-	// 便携目录已有数据：不动
-	if fileExists(filepath.Join(portableDir, "settings.json")) || fileExists(filepath.Join(portableDir, "data.db")) {
-		return nil
-	}
-	// 旧位置没有数据：没什么可迁的
-	if !dirExists(legacyDir) {
-		return nil
-	}
-
-	// 先迁 settings.json，用户的自定义 dbPath 才能一起带过来
-	if err := copyFileIfExists(
-		filepath.Join(legacyDir, "settings.json"),
-		filepath.Join(portableDir, "settings.json"),
-	); err != nil {
-		return err
-	}
-
-	// 数据库主文件 + WAL 配套文件。
-	// 只搬主文件会丢未 checkpoint 的写入，所以 -wal/-shm 必须一起走。
-	if fileExists(filepath.Join(legacyDir, "data.db")) {
-		if err := copyDbFiles(filepath.Join(legacyDir, "data.db"), filepath.Join(portableDir, "data.db")); err != nil {
-			return err
-		}
-	}
-	return nil
+	return filepath.Join(appData, systemAppDirName)
 }
 
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
-}
-
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
-}
-
-// copyFileIfExists 源文件存在时复制到目标；源不存在视为成功（无需复制）。
-func copyFileIfExists(src, dst string) error {
-	if !fileExists(src) {
-		return nil
-	}
-	if err := copyFile0600(src, dst); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
-}
-
-// copyFile0600 复制单个文件并以 0600 权限落盘。
-func copyFile0600(srcPath, dstPath string) error {
-	src, err := os.Open(srcPath)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-
-	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if err != nil {
-		return err
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, src); err != nil {
-		return err
-	}
-	return dst.Close()
 }

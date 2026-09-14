@@ -371,6 +371,26 @@ func copyDbFiles(srcPath, dstPath string) error {
 	return nil
 }
 
+// copyFile0600 复制单个文件并以 0600 权限落盘
+func copyFile0600(srcPath, dstPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+	return dst.Close()
+}
+
 // IsMasterSet 检查是否已设置主密钥
 func (a *App) IsMasterSet() bool {
 	if a.store == nil {
