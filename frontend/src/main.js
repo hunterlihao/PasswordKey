@@ -1243,7 +1243,8 @@ function showToast(message, type = 'success') {
 
 // ===== 安全体检 =====
 
-// 评分对应的等级文案与配色
+// 评分等级：阈值与刻度尺色带（0-50 / 50-70 / 70-90 / 90-100）严格对应，
+// 保证"指针位置"和"等级文案"永远一致，不会出现指向红色区却写"良好"的情况。
 function scoreLevel(score) {
     if (score >= 90) return { text: '优秀', cls: 'score-good' };
     if (score >= 70) return { text: '良好', cls: 'score-fair' };
@@ -1296,31 +1297,62 @@ function renderAuditReport(report) {
 
     const level = scoreLevel(report.score);
     const total = report.total || 0;
+    const issues = report.weak_count + report.duplicate_group_count;
 
-    // 总分仪表盘
+    // 顶部刻度尺：把 0-100 分呈现为标尺上的一个位置。
+    // 分档阈值与 scoreLevel 保持一致（50/70/90），
+    // 色带的宽度是真实阈值比例，不是装饰。
     let html = `
-        <div class="audit-score-card">
-            <div class="audit-score-ring ${level.cls}">
-                <span class="audit-score-num">${report.score}</span>
-                <span class="audit-score-unit">分</span>
+        <div class="gauge">
+            <div class="gauge-head">
+                <div class="gauge-score">
+                    <span class="gauge-score-num ${level.cls}">${report.score}</span>
+                    <span class="gauge-score-max">/100</span>
+                </div>
+                <div class="gauge-verdict">
+                    <span class="gauge-verdict-word ${level.cls}">${level.text}</span>
+                    <span class="gauge-verdict-sub">${total} 条凭证${
+                        issues === 0 ? '，未发现问题' : `，${issues} 处待处理`
+                    }</span>
+                </div>
             </div>
-            <div class="audit-score-meta">
-                <div class="audit-score-level ${level.cls}">${level.text}</div>
-                <div class="audit-score-sub">共 ${total} 条凭证</div>
+            <div class="gauge-scale" role="img" aria-label="安全评分 ${report.score} 分，满分 100 分">
+                <div class="gauge-band gauge-band-bad"  style="width:50%"></div>
+                <div class="gauge-band gauge-band-warn" style="width:20%"></div>
+                <div class="gauge-band gauge-band-fair" style="width:20%"></div>
+                <div class="gauge-band gauge-band-good" style="width:10%"></div>
+                <div class="gauge-needle" style="left:${report.score}%"></div>
+            </div>
+            <div class="gauge-ticks">
+                <span style="left:0%">0</span>
+                <span style="left:50%">50</span>
+                <span style="left:70%">70</span>
+                <span style="left:90%">90</span>
+                <span style="left:100%">100</span>
+            </div>
+            <div class="gauge-legend">
+                <span><i class="lg lg-bad"></i>需要改进</span>
+                <span><i class="lg lg-warn"></i>一般</span>
+                <span><i class="lg lg-fair"></i>良好</span>
+                <span><i class="lg lg-good"></i>优秀</span>
             </div>
         </div>
-        <div class="audit-stats">
-            <div class="audit-stat ${report.weak_count > 0 ? 'has-issue' : ''}">
-                <div class="audit-stat-num">${report.weak_count}</div>
-                <div class="audit-stat-label">弱密码</div>
+
+        <div class="tally">
+            <div class="tally-row ${report.weak_count > 0 ? 'is-issue' : ''}">
+                <span class="tally-name">弱密码</span>
+                <span class="tally-lead"></span>
+                <span class="tally-value">${report.weak_count}</span>
             </div>
-            <div class="audit-stat ${report.duplicate_group_count > 0 ? 'has-issue' : ''}">
-                <div class="audit-stat-num">${report.duplicate_group_count}</div>
-                <div class="audit-stat-label">重复密码组</div>
+            <div class="tally-row ${report.duplicate_group_count > 0 ? 'is-issue' : ''}">
+                <span class="tally-name">重复密码组</span>
+                <span class="tally-lead"></span>
+                <span class="tally-value">${report.duplicate_group_count}</span>
             </div>
-            <div class="audit-stat">
-                <div class="audit-stat-num">${report.duplicate_item_count}</div>
-                <div class="audit-stat-label">涉及重复的凭证</div>
+            <div class="tally-row">
+                <span class="tally-name">涉及重复的凭证</span>
+                <span class="tally-lead"></span>
+                <span class="tally-value">${report.duplicate_item_count}</span>
             </div>
         </div>
     `;
@@ -1335,71 +1367,70 @@ function renderAuditReport(report) {
         return;
     }
 
-    // 弱密码分组
+    // 弱密码清单
     if (report.weak_count > 0) {
         html += `
-            <div class="audit-section">
-                <div class="audit-section-title">
-                    <span class="audit-dot dot-danger"></span>
-                    弱密码 <span class="audit-section-count">${report.weak_count}</span>
+            <section class="finding">
+                <div class="finding-head">
+                    <span class="finding-mark mark-danger"></span>
+                    <h3 class="finding-title">弱密码</h3>
+                    <span class="finding-count">${report.weak_count} 条</span>
                 </div>
-                <div class="audit-list">
+                <p class="finding-note">这些密码太容易被猜到或暴力破解，建议改成 16 位以上的随机密码。</p>
+                <div class="finding-list">
                     ${report.weak.map(it => `
-                        <div class="audit-item" onclick="editCredentialFromAudit(${it.id})">
-                            <span class="audit-item-icon">${getCredIcon(it.type)}</span>
-                            <div class="audit-item-main">
-                                <span class="audit-item-name">${escapeHtml(it.name)}</span>
-                                <span class="audit-item-badge">${getCredBadge(it.type)}</span>
-                            </div>
-                            <span class="audit-item-detail">${escapeHtml(it.detail || '')}</span>
-                            <span class="audit-item-arrow">›</span>
-                        </div>
+                        <button class="finding-row" onclick="editCredentialFromAudit(${it.id})">
+                            <span class="finding-icon">${getCredIcon(it.type)}</span>
+                            <span class="finding-name">${escapeHtml(it.name)}</span>
+                            <span class="finding-tag">${getCredBadge(it.type)}</span>
+                            <span class="finding-why">${escapeHtml(it.detail || '')}</span>
+                            <span class="finding-go">修改 →</span>
+                        </button>
                     `).join('')}
                 </div>
-            </div>
+            </section>
         `;
     }
 
-    // 重复密码分组
+    // 重复密码清单
     if (report.duplicate_group_count > 0) {
         html += `
-            <div class="audit-section">
-                <div class="audit-section-title">
-                    <span class="audit-dot dot-warn"></span>
-                    重复使用的密码 <span class="audit-section-count">${report.duplicate_group_count} 组</span>
+            <section class="finding">
+                <div class="finding-head">
+                    <span class="finding-mark mark-warn"></span>
+                    <h3 class="finding-title">重复使用的密码</h3>
+                    <span class="finding-count">${report.duplicate_group_count} 组</span>
                 </div>
-                <p class="audit-hint">同一个密码用在多个地方，一旦其中一处泄露，其余账号都会受影响。建议为每个账号设置独立密码。</p>
+                <p class="finding-note">同一个密码用在多处，只要有一处泄露，其余账号都会跟着失守。建议每个账号用独立密码。</p>
                 ${report.duplicate_groups.map(g => `
-                    <div class="audit-group">
-                        <div class="audit-group-head">
-                            <code class="audit-group-mask">${escapeHtml(g.masked)}</code>
-                            <span class="audit-group-count">${g.items.length} 处使用</span>
+                    <div class="dup-group">
+                        <div class="dup-head">
+                            <code class="dup-mask">${escapeHtml(g.masked)}</code>
+                            <span class="dup-count">${g.items.length} 处使用</span>
                         </div>
-                        <div class="audit-list">
+                        <div class="finding-list">
                             ${g.items.map(it => `
-                                <div class="audit-item" onclick="editCredentialFromAudit(${it.id})">
-                                    <span class="audit-item-icon">${getCredIcon(it.type)}</span>
-                                    <div class="audit-item-main">
-                                        <span class="audit-item-name">${escapeHtml(it.name)}</span>
-                                        <span class="audit-item-badge">${getCredBadge(it.type)}</span>
-                                    </div>
-                                    <span class="audit-item-arrow">›</span>
-                                </div>
+                                <button class="finding-row" onclick="editCredentialFromAudit(${it.id})">
+                                    <span class="finding-icon">${getCredIcon(it.type)}</span>
+                                    <span class="finding-name">${escapeHtml(it.name)}</span>
+                                    <span class="finding-tag">${getCredBadge(it.type)}</span>
+                                    <span class="finding-go">修改 →</span>
+                                </button>
                             `).join('')}
                         </div>
                     </div>
                 `).join('')}
-            </div>
+            </section>
         `;
     }
 
     // 全部通过
     if (report.weak_count === 0 && report.duplicate_group_count === 0) {
         html += `
-            <div class="audit-clean">
-                <div class="icon">✅</div>
+            <div class="finding-allclear">
+                <div class="allclear-mark">✓</div>
                 <h3>没有发现问题</h3>
-                <p>所有密码都达到了强度要求，且没有重复使用。</p>
+                <p>${total} 条凭证的密码都达到了强度要求，且没有重复使用。</p>
             </div>
         `;
     }

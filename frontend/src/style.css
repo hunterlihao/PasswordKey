@@ -1551,209 +1551,261 @@ body::after {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--input-focus);
 }
-
 /* ===== 安全体检 ===== */
+/*
+ * 设计说明：
+ * 本页的核心是"分数处在量表的哪个位置"，因此用一根横向刻度尺表达，
+ * 而不是常见的"大数字 + 环形进度条 + 卡片网格"（那种做法把分数
+ * 当成营销数字，丢掉了"量级判断"这个真正有用的信息）。
+ * 数字、掩码等读数统一用等宽字体，让它像仪表而非宣传语。
+ */
+
 .audit-body {
     flex: 1;
     overflow-y: auto;
-    padding: 20px 24px 32px;
+    padding: 24px 28px 40px;
 }
 
-/* 总分卡片 */
-.audit-score-card {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    padding: 20px 24px;
+/* ---- 刻度尺 ---- */
+.gauge {
+    padding: 22px 24px 18px;
     background: var(--bg-surface);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-card);
 }
-.audit-score-ring {
-    width: 88px;
-    height: 88px;
-    flex-shrink: 0;
-    border-radius: 50%;
+.gauge-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+.gauge-score {
     display: flex;
     align-items: baseline;
-    justify-content: center;
-    border: 4px solid var(--border-medium);
-    background: var(--bg-elevated);
+    gap: 4px;
+    font-family: 'JetBrains Mono', monospace;
 }
-.audit-score-ring .audit-score-num {
-    font-family: 'Playfair Display', serif;
-    font-size: 34px;
-    font-weight: 700;
+.gauge-score-num {
+    font-size: 46px;
+    font-weight: 600;
     line-height: 1;
-    align-self: center;
-    color: var(--text-primary);
+    letter-spacing: -2px;
 }
-.audit-score-ring .audit-score-unit {
-    font-size: 12px;
+.gauge-score-max {
+    font-size: 14px;
     color: var(--text-muted);
-    align-self: flex-end;
-    margin-bottom: 8px;
+    font-weight: 500;
 }
-.audit-score-meta {
+.gauge-verdict {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    align-items: flex-end;
+    gap: 3px;
 }
-.audit-score-level {
-    font-size: 20px;
+.gauge-verdict-word {
+    font-size: 17px;
     font-weight: 700;
+    letter-spacing: 1px;
 }
-.audit-score-sub {
-    font-size: 13px;
+.gauge-verdict-sub {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* 色带：宽度是真实阈值比例（50/70/90） */
+.gauge-scale {
+    position: relative;
+    display: flex;
+    height: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-elevated);
+}
+.gauge-band { height: 100%; }
+.gauge-band-bad  { background: #dc2626; opacity: .82; }
+.gauge-band-warn { background: #d97706; opacity: .82; }
+.gauge-band-fair { background: #ca8a04; opacity: .82; }
+.gauge-band-good { background: #16a34a; opacity: .82; }
+
+/* 指针：落在真实分数处，带一个向上的三角标记 */
+.gauge-needle {
+    position: absolute;
+    top: -5px;
+    bottom: -5px;
+    width: 3px;
+    margin-left: -1.5px;
+    background: var(--text-primary);
+    border-radius: 2px;
+    box-shadow: 0 0 0 2px var(--bg-surface);
+    transition: left .5s cubic-bezier(.4, 0, .2, 1);
+}
+.gauge-needle::before {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--text-primary);
+    border-bottom-width: 0;
+}
+
+.gauge-ticks {
+    position: relative;
+    height: 16px;
+    margin-top: 7px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
     color: var(--text-muted);
 }
-.score-good { color: var(--success); }
-.score-fair { color: var(--accent); }
-.score-warn { color: var(--warning); }
-.score-bad  { color: var(--danger); }
-.audit-score-ring.score-good { border-color: var(--success); }
-.audit-score-ring.score-fair { border-color: var(--accent); }
-.audit-score-ring.score-warn { border-color: var(--warning); }
-.audit-score-ring.score-bad  { border-color: var(--danger); }
-
-/* 统计小卡 */
-.audit-stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-top: 14px;
+.gauge-ticks span {
+    position: absolute;
+    transform: translateX(-50%);
 }
-.audit-stat {
-    padding: 14px 16px;
+.gauge-ticks span:first-child { transform: none; }
+.gauge-ticks span:last-child { transform: translateX(-100%); }
+
+.gauge-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-light);
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.gauge-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.lg {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    display: inline-block;
+}
+.lg-bad  { background: #dc2626; }
+.lg-warn { background: #d97706; }
+.lg-fair { background: #ca8a04; }
+.lg-good { background: #16a34a; }
+
+/* ---- 计数清单（用点线引导，像体检报告的项目行）---- */
+.tally {
+    margin-top: 16px;
+    padding: 4px 18px;
     background: var(--bg-surface);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
-    text-align: center;
-    transition: var(--transition);
 }
-.audit-stat.has-issue {
-    border-color: var(--border-accent);
-    background: var(--accent-glow);
+.tally-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 10px 0;
 }
-.audit-stat-num {
-    font-family: 'Playfair Display', serif;
-    font-size: 26px;
-    font-weight: 700;
+.tally-row + .tally-row {
+    border-top: 1px solid var(--border-light);
+}
+.tally-name {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+/* 点线填充：把"项目名"和"数值"连起来，是报表里成熟的阅读引导 */
+.tally-lead {
+    flex: 1;
+    border-bottom: 1px dotted var(--border-medium);
+    transform: translateY(-3px);
+}
+.tally-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
     color: var(--text-primary);
-    line-height: 1.2;
+    flex-shrink: 0;
 }
-.audit-stat.has-issue .audit-stat-num {
-    color: var(--danger);
-}
-.audit-stat-label {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-top: 2px;
-}
+.tally-row.is-issue .tally-name { color: var(--danger); }
+.tally-row.is-issue .tally-value { color: var(--danger); }
 
-/* 分组区块 */
-.audit-section {
+/* ---- 问题清单 ---- */
+.finding {
     margin-top: 26px;
 }
-.audit-section-title {
+.finding-head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 15px;
+    gap: 9px;
+}
+.finding-mark {
+    width: 3px;
+    height: 17px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.mark-danger { background: var(--danger); }
+.mark-warn   { background: var(--warning); }
+.finding-title {
+    font-size: 15.5px;
     font-weight: 700;
     color: var(--text-primary);
-    margin-bottom: 10px;
+    margin: 0;
 }
-.audit-section-count {
-    font-size: 12px;
-    font-weight: 500;
+.finding-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
     color: var(--text-muted);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-light);
+    border: 1px solid var(--border-medium);
     border-radius: 999px;
     padding: 1px 9px;
 }
-.audit-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-.dot-danger { background: var(--danger); }
-.dot-warn   { background: var(--warning); }
-
-.audit-hint {
+.finding-note {
     font-size: 12.5px;
     color: var(--text-muted);
-    line-height: 1.6;
-    margin: 0 0 12px;
+    line-height: 1.65;
+    margin: 8px 0 12px;
+    max-width: 62ch;
 }
 
-/* 重复密码分组外壳 */
-.audit-group {
-    margin-bottom: 14px;
-    padding: 12px 14px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-}
-.audit-group-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 8px;
-}
-.audit-group-mask {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    color: var(--text-secondary);
-    background: var(--bg-surface);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
-    padding: 3px 10px;
-}
-.audit-group-count {
-    font-size: 12px;
-    color: var(--warning);
-    font-weight: 600;
-}
-
-/* 条目列表 */
-.audit-list {
+.finding-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
 }
-.audit-item {
+/* 用 button 而非 div：可键盘聚焦、语义正确（点击有动作） */
+.finding-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 9px 12px;
+    width: 100%;
+    padding: 10px 13px;
     background: var(--bg-surface);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: var(--transition);
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    transition: border-color .2s ease, background .2s ease;
 }
-.audit-item:hover {
+.finding-row:hover {
     border-color: var(--border-accent);
-    box-shadow: var(--shadow-sm);
-    transform: translateX(2px);
+    background: var(--bg-elevated);
 }
-.audit-item-icon {
-    font-size: 16px;
+.finding-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.finding-icon {
+    font-size: 15px;
     flex-shrink: 0;
 }
-.audit-item-main {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 0;
-}
-.audit-item-name {
+.finding-name {
     font-size: 13.5px;
     font-weight: 500;
     color: var(--text-primary);
@@ -1761,7 +1813,7 @@ body::after {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.audit-item-badge {
+.finding-tag {
     font-size: 11px;
     color: var(--text-muted);
     background: var(--bg-elevated);
@@ -1769,37 +1821,102 @@ body::after {
     padding: 1px 8px;
     flex-shrink: 0;
 }
-.audit-item-detail {
-    font-size: 12px;
+.finding-why {
+    font-size: 11.5px;
     color: var(--danger);
+    margin-left: auto;
     flex-shrink: 0;
 }
-.audit-item-arrow {
-    color: var(--text-muted);
-    font-size: 18px;
-    line-height: 1;
+.finding-go {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-left: auto;
     flex-shrink: 0;
+    opacity: 0;
+    transition: opacity .2s ease;
+}
+.finding-row:hover .finding-go,
+.finding-row:focus-visible .finding-go {
+    opacity: 1;
+}
+/* 当行内已有"原因"占位时，不再推挤 */
+.finding-why + .finding-go { margin-left: 10px; }
+
+/* 重复密码分组 */
+.dup-group {
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+}
+.dup-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 9px;
+}
+.dup-mask {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 3px 11px;
+    letter-spacing: 1px;
+}
+.dup-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    color: var(--warning);
+    font-weight: 600;
 }
 
 /* 全部通过 */
-.audit-clean {
+.finding-allclear {
     margin-top: 26px;
+    padding: 34px 24px;
     text-align: center;
-    padding: 32px 20px;
     background: var(--bg-surface);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-lg);
 }
-.audit-clean .icon {
-    font-size: 40px;
-    margin-bottom: 10px;
+.allclear-mark {
+    width: 44px;
+    height: 44px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    border: 2px solid var(--success);
+    color: var(--success);
+    font-size: 22px;
+    line-height: 40px;
+    font-weight: 700;
 }
-.audit-clean h3 {
+.finding-allclear h3 {
     font-size: 16px;
     color: var(--text-primary);
     margin-bottom: 6px;
 }
-.audit-clean p {
+.finding-allclear p {
     font-size: 13px;
     color: var(--text-muted);
+}
+
+/* 窄窗口下收紧留白 */
+@media (max-width: 720px) {
+    .audit-body { padding: 16px 14px 28px; }
+    .gauge-head { align-items: flex-start; }
+    .gauge-verdict { align-items: flex-start; }
+    .gauge-score-num { font-size: 38px; }
+    .finding-row { flex-wrap: wrap; }
+    .finding-go { margin-left: 0; opacity: 1; }
+}
+
+/* 尊重系统的减少动效设置 */
+@media (prefers-reduced-motion: reduce) {
+    .gauge-needle { transition: none; }
+    .finding-row, .finding-go { transition: none; }
 }
