@@ -82,12 +82,14 @@ func validateCredential(c *model.Credential) error {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	appDataDir, err := getAppDataDir()
+	// 便携版：数据优先落在 exe 同级的 data/ 子目录，
+	// 目录不可写时自动回退到 %APPDATA%（见 resolveDataDir）。
+	appDataDir, _, err := resolveDataDir()
 	if err != nil {
 		runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 			Type:    runtime.ErrorDialog,
 			Title:   "启动失败",
-			Message: "无法获取应用数据目录: " + err.Error(),
+			Message: "无法确定数据目录: " + err.Error(),
 		})
 		runtime.Quit(ctx)
 		return
@@ -168,6 +170,28 @@ func (a *App) shutdown(ctx context.Context) {
 // GetDbPath 返回当前数据库路径
 func (a *App) GetDbPath() string {
 	return a.dbPath
+}
+
+// GetDataDir 返回配置与默认数据库所在的数据目录。
+// 便携版为 exe 同级的 data/，回退时为 %APPDATA%\PasswordManager。
+func (a *App) GetDataDir() string {
+	return a.settingsDir
+}
+
+// IsPortable 返回当前是否运行在便携模式（数据目录与 exe 同级）。
+// 前端据此展示「便携版 / 系统版」标识。
+func (a *App) IsPortable() bool {
+	if a.settingsDir == "" {
+		return false
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	if resolved, evalErr := filepath.EvalSymlinks(exe); evalErr == nil {
+		exe = resolved
+	}
+	return filepath.Dir(a.settingsDir) == filepath.Dir(exe)
 }
 
 // GetAutoLockMinutes 返回当前自动锁定时长（分钟）。0 表示永不自动锁定。
@@ -345,38 +369,6 @@ func copyDbFiles(srcPath, dstPath string) error {
 	}
 
 	return nil
-}
-
-// copyFile0600 复制单个文件并以 0600 权限落盘
-func copyFile0600(srcPath, dstPath string) error {
-	src, err := os.Open(srcPath)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-
-	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if err != nil {
-		return err
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, src); err != nil {
-		return err
-	}
-	return dst.Close()
-}
-
-func getAppDataDir() (string, error) {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		appData = filepath.Join(home, "AppData", "Roaming")
-	}
-	return filepath.Join(appData, "PasswordManager"), nil
 }
 
 // IsMasterSet 检查是否已设置主密钥

@@ -34,6 +34,8 @@ export function GetCredentialViewById(arg1:number):Promise<model.CredentialView>
 
 export function GetCredentials(arg1:number,arg2:string):Promise<Array<model.CredentialView>>;
 
+export function GetDataDir():Promise<string>;
+
 export function GetDbPath():Promise<string>;
 
 export function GetDecryptedSecret(arg1:number,arg2:string):Promise<string>;
@@ -45,6 +47,8 @@ export function GetFavorites(arg1:string):Promise<Array<model.CredentialView>>;
 export function ImportData():Promise<number>;
 
 export function IsMasterSet():Promise<boolean>;
+
+export function IsPortable():Promise<boolean>;
 
 export function IsUnlocked():Promise<boolean>;
 

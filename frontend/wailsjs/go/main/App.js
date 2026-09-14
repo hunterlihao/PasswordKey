@@ -66,6 +66,10 @@ export function GetCredentials(arg1, arg2) {
   return window['go']['main']['App']['GetCredentials'](arg1, arg2);
 }
 
+export function GetDataDir() {
+  return window['go']['main']['App']['GetDataDir']();
+}
+
 export function GetDbPath() {
   return window['go']['main']['App']['GetDbPath']();
 }
@@ -88,6 +92,10 @@ export function ImportData() {
 
 export function IsMasterSet() {
   return window['go']['main']['App']['IsMasterSet']();
+}
+
+export function IsPortable() {
+  return window['go']['main']['App']['IsPortable']();
 }
 
 export function IsUnlocked() {

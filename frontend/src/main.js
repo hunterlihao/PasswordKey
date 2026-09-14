@@ -1,6 +1,6 @@
 import './style.css';
 
-import { IsMasterSet, SetupMaster, Unlock, Lock, GetCredentials, GetCredentialViewById, GetFavorites, GetCredentialCounts, AddCredential, UpdateCredential, DeleteCredential, DeleteCredentials, ToggleFavorite, GetDecryptedSecret, GetDecryptedSecretDirect, GeneratePassword, CheckPasswordStrength, ChangeMasterPassword, ExportData, ExportSingle, ImportData, DownloadJSONTemplate, DownloadExcelTemplate, GetDbPath, ChangeDbPath, ResetDbPath, GetAuditReport, GetAutoLockMinutes, SetAutoLockMinutes } from '../wailsjs/go/main/App';
+import { IsMasterSet, SetupMaster, Unlock, Lock, GetCredentials, GetCredentialViewById, GetFavorites, GetCredentialCounts, AddCredential, UpdateCredential, DeleteCredential, DeleteCredentials, ToggleFavorite, GetDecryptedSecret, GetDecryptedSecretDirect, GeneratePassword, CheckPasswordStrength, ChangeMasterPassword, ExportData, ExportSingle, ImportData, DownloadJSONTemplate, DownloadExcelTemplate, GetDbPath, GetDataDir, IsPortable, ChangeDbPath, ResetDbPath, GetAuditReport, GetAutoLockMinutes, SetAutoLockMinutes } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
 let currentView = 'login';
@@ -1454,8 +1454,21 @@ window.showSettings = async function() {
         autoLock = await GetAutoLockMinutes();
     } catch (_) {}
 
-    const defaultDir = dbPath.replace(/[\\\/][^\\\/]+$/, '');
-    const isCustom = !dbPath.includes('AppData\\Roaming\\PasswordManager') && !dbPath.includes('AppData/Roaming/PasswordManager');
+    let dataDir = '';
+    try {
+        dataDir = await GetDataDir();
+    } catch (_) {}
+
+    let portable = false;
+    try {
+        portable = await IsPortable();
+    } catch (_) {}
+
+    // 便携版把数据放在 exe 同级 data/ 下，目录不再固定为 AppData。
+    // 判断「是否自定义路径」必须与数据目录比较，而不是硬编码旧路径，
+    // 否则便携版默认路径会被误判成自定义路径、错误地露出「恢复默认」。
+    const normalize = (p) => (p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    const isCustom = !!dataDir && normalize(dbPath.replace(/[\\\/][^\\\/]+$/, '')) !== normalize(dataDir);
 
     // 自动锁定时长选项（与后端的白名单保持一致）
     const lockOptions = [
@@ -1498,7 +1511,11 @@ window.showSettings = async function() {
                     <button class="btn btn-primary btn-small" onclick="changeDbPath()">更改路径</button>
                     ${isCustom ? '<button class="btn btn-secondary btn-small" onclick="resetDbPath()">恢复默认</button>' : ''}
                 </div>
-                <p class="settings-hint">更改后需重启应用生效</p>
+                <p class="settings-hint">${
+                    portable
+                        ? '便携版：配置与数据库保存在程序目录下的 <code>data/</code>，整个文件夹可随程序一起拷贝。'
+                        : '未能写入程序目录，已回退到系统数据目录。'
+                }<br>更改后需重启应用生效</p>
             </div>
             <div class="modal-buttons">
                 <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">关闭</button>

@@ -9,6 +9,9 @@ frontend/package.json.md5
 # 数据库文件
 *.db
 
+# 便携版数据目录（运行时生成的配置与密码库，绝不入库）
+data/
+
 # IDE 配置
 .vscode/
 .idea/
