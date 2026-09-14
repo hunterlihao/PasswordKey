@@ -2,8 +2,6 @@ package main
 
 import (
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // autoLockCheckInterval 空闲检测的轮询间隔。
@@ -75,23 +73,13 @@ func (a *App) autoLockMinutes() int {
 	return s.EffectiveAutoLockMinutes()
 }
 
-// lockByInactivity 因闲置而锁定：清密钥，并把前端切回登录页。
+// lockByInactivity 因闲置而锁定：清密钥并通知前端切到锁定页。
 //
-// 与托盘「立即锁定」共用同一套收尾逻辑（见 lockFromTray）：
-// 光清 Go 侧密钥是不够的，前端仍停在凭证列表上，必须重载页面
-// 让 init() 重跑，才会落到 showLoginView()。
-//
-// 这里不区分窗口是否可见，一律重载 —— 原因是：
-//   - Wails 不向 Go 侧暴露窗口可见性（options 只有 Startup/DomReady/
-//     Shutdown/BeforeClose 四个回调，HideWindowOnClose 的隐藏路径连
-//     OnBeforeClose 都不经过），自己维护标志位极易失真；
-//   - 重载是幂等的：窗口若正隐藏着，重载不会打断任何人
-//     （用户下次唤出窗口时正好看到登录页，符合预期）。
+// 复用 lockAndNotify（与托盘「立即锁定」同一套逻辑），差别在于
+// 这里**不主动唤起窗口**：用户是离开了电脑，弹窗打扰没有意义；
+// 前端切页在窗口下次被唤出时自然可见。
 //
 // 注意不清空 fail_count：自动锁定是正常操作，不应影响防爆破计数。
 func (a *App) lockByInactivity() {
-	a.Lock()
-	if a.ctx != nil {
-		runtime.WindowReload(a.ctx)
-	}
+	a.lockAndNotify()
 }

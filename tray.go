@@ -58,36 +58,15 @@ func (a *App) initTray() {
 
 // lockFromTray 处理托盘菜单的「立即锁定」。
 //
-// 与窗口内那个锁定按钮不同：窗口内按钮点完会由前端自己调 showLoginView()
-// 切回登录页，而托盘锁定发生时前端完全不知情 —— 内存里的主密钥已经清掉了，
-// 但页面还停在凭证列表上，窗口一恢复就能看到明文列表（越权展示）。
-//
-// 这里的解决办法是让页面整体重载：
-//   - WindowReload() 执行的是 window.location.reload()（见 wails 的
-//     runtime_prod_desktop.js：`function oe(){window.location.reload()}`），
-//   - 重载后前端会重新跑 init()，此时 IsMasterSet() 为真而密钥已清空，
-//     于是走 showLoginView()，正好落到登录页。
-//
-// 为什么不用 window.runtime.EventsOn 发事件？
-// 前端 index.html 目前完全没有引入 wails 的 runtime（它要与 Rust/wry 宿主共用），
-// 一旦引入就会破坏"同一份前端兼容两个宿主"的约定。所以选择用重载，
-// 做到既修好问题、又零前端改动。
-//
-// 顺带的好处：重载会重新显示 #splash（它在 index.html 里是静态元素），
-// 锁定后看到一次"重新初始化"动画，语义上也比直接切页面更自然。
-//
-// 最后把窗口显示出来，让用户直接看到"已锁定"的结果 ——
-// 否则窗口若是隐藏的，用户点完锁定毫无反馈，会怀疑没生效。
+// 与闲置自动锁定共用 lockAndNotify（清密钥 + 广播事件，前端切锁定页）。
+// 额外差异：这里先把窗口唤到前台 —— 用户在托盘主动点了"锁定"，
+// 理应立刻看到锁定页；窗口若是隐藏的，点完毫无反馈会让人以为没生效。
 func (a *App) lockFromTray() {
-	a.Lock()
-	if a.ctx == nil {
-		return
+	if a.ctx != nil {
+		runtime.WindowShow(a.ctx)
+		runtime.WindowUnminimise(a.ctx)
 	}
-	// 先唤起窗口，再重载：保证用户看到的是重载后的登录页，
-	// 而不是一闪而过的旧列表。
-	runtime.WindowShow(a.ctx)
-	runtime.WindowUnminimise(a.ctx)
-	runtime.WindowReload(a.ctx)
+	a.lockAndNotify()
 }
 
 // showWindow 从托盘恢复窗口：显示并取消最小化。

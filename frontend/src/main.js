@@ -1,6 +1,7 @@
 import './style.css';
 
 import { IsMasterSet, SetupMaster, Unlock, Lock, GetCredentials, GetCredentialViewById, GetFavorites, GetCredentialCounts, AddCredential, UpdateCredential, DeleteCredential, DeleteCredentials, ToggleFavorite, GetDecryptedSecret, GetDecryptedSecretDirect, GeneratePassword, CheckPasswordStrength, ChangeMasterPassword, ExportData, ExportSingle, ImportData, DownloadJSONTemplate, DownloadExcelTemplate, GetDbPath, ChangeDbPath, ResetDbPath, GetAuditReport, GetAutoLockMinutes, SetAutoLockMinutes } from '../wailsjs/go/main/App';
+import { EventsOn } from '../wailsjs/runtime/runtime';
 
 let currentView = 'login';
 let currentFilter = -1;
@@ -166,6 +167,59 @@ function showLoginView() {
     });
 }
 
+// ===== 专用锁定页 =====
+//
+// 用于「托盘立即锁定」和「闲置自动锁定」：Go 侧清空主密钥后广播事件，
+// 前端收到就切到这个页面。
+//
+// 为什么不复用登录页：锁定与首次登录的语义不同 —— 登录页文案是
+// "欢迎回来"，而这里要明确告诉用户"已被锁定"，让人一眼知道发生了什么。
+// 也不再用 window.location.reload()：重载会重播 #splash 启动动画，
+// 观感上像"重启应用"而不是"锁定"，还会把整个 SPA 状态推倒重建。
+function showLockedView() {
+    currentView = 'locked';
+    document.querySelector('#app').innerHTML = `
+        <div class="auth-container">
+            <div class="auth-card locked-card">
+                <div class="logo">
+                    <div class="icon locked-icon">🔒</div>
+                    <h1>已锁定</h1>
+                    <p class="subtitle">密码库已锁定，输入主密钥继续使用</p>
+                </div>
+                <div class="form-group">
+                    <label>主密钥</label>
+                    <input type="password" id="password" placeholder="输入主密钥解锁" autocomplete="off">
+                </div>
+                <div class="buttons">
+                    <button class="btn btn-primary" onclick="unlock()">解锁</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('password').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') unlock();
+    });
+    // 自动聚焦，锁定后可以直接输密码
+    const pw = document.getElementById('password');
+    if (pw) pw.focus();
+}
+
+// 监听 Go 侧的「已锁定」事件（托盘锁定 / 闲置自动锁定）。
+// 事件名与后端 lock.go 的 eventVaultLocked 保持一致。
+EventsOn('vault:locked', () => {
+    // 只要当前处于"能看到数据"的视图就切到锁定页。
+    // 白名单式排除登录态，避免将来新增视图时漏掉（新增视图默认会被覆盖）。
+    const safeViews = ['login', 'setup', 'locked'];
+    if (safeViews.includes(currentView)) return;
+
+    // init 尚未跑完（splash 还在播）时不动页面：
+    // 随后 init 会落到登录页，而 Go 侧密钥已清，结果正确。
+    if (document.getElementById('splash')) return;
+
+    showLockedView();
+});
+
 window.showMainView = async function() {
     currentView = 'main';
     credCounts = await GetCredentialCounts();
@@ -182,7 +236,6 @@ window.showMainView = async function() {
                 </div>
                 <div class="header-actions">
                     <button class="btn btn-primary btn-small" onclick="showTypeSelection()">+ 新增</button>
-                    <button class="btn btn-ghost btn-small" onclick="showAuditView()">安全体检</button>
                     <button class="btn btn-ghost btn-small" id="batch-delete-btn" onclick="toggleSelectMode()">批量删除</button>
                     <button class="btn btn-ghost btn-small" onclick="exportData()">导出</button>
                     <button class="btn btn-ghost btn-small" onclick="importData()">导入</button>
@@ -1398,6 +1451,13 @@ window.showSettings = async function() {
                 <p class="settings-hint">超过设定时长无任何键鼠操作时自动锁定。<br>按系统级空闲时间计算，看视频、离开电脑都会被计入。</p>
             </div>
             <div class="settings-section">
+                <label class="settings-label">安全体检</label>
+                <div class="settings-actions">
+                    <button class="btn btn-primary btn-small" onclick="openAuditFromSettings()">开始扫描</button>
+                </div>
+                <p class="settings-hint">检查弱密码与重复使用的密码，并给出安全评分。</p>
+            </div>
+            <div class="settings-section">
                 <label class="settings-label">数据库存储位置</label>
                 <div class="settings-path-row">
                     <code class="settings-path" id="db-path-display">${escapeHtml(dbPath)}</code>
@@ -1426,6 +1486,13 @@ window.changeAutoLock = async function(value) {
     } catch (err) {
         showToast('设置失败: ' + err, 'error');
     }
+};
+
+// 从设置弹窗进入安全体检：先关掉弹窗，再切换到独立体检页。
+// 用 closeAllModals 而非直接 remove，保证与其它弹窗的清理逻辑一致。
+window.openAuditFromSettings = function() {
+    closeAllModals();
+    showAuditView();
 };
 
 window.copyPath = function() {

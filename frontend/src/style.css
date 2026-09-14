@@ -352,6 +352,26 @@ body::after {
     font-weight: 500;
 }
 
+/* ===== 锁定页 ===== */
+/* 复用 auth-card 布局，只区分图标与标题的色调，
+   让"已锁定"一眼可辨、又与整体风格一致 */
+.locked-card .locked-icon {
+    /* 锁定态：图标偏暗，与登录页的金色发光形成对照 */
+    background: linear-gradient(145deg, #ebe5d8, #ded6c4);
+    border-color: var(--border-accent);
+    box-shadow: 0 0 24px rgba(168, 137, 63, 0.16);
+    animation: none;
+}
+.locked-card h1 {
+    color: var(--text-secondary);
+}
+.locked-card .subtitle {
+    /* 锁定页文案不加字距全大写，避免与登录页完全雷同 */
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 13.5px;
+}
+
 /* ===== Form Elements ===== */
 .form-group {
     margin-bottom: 20px;

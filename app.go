@@ -139,7 +139,7 @@ func (a *App) startup(ctx context.Context) {
 	a.initTray()
 
 	// 闲置自动锁定监控：独立协程轮询系统级空闲时长。
-	// 放在托盘之后启动，保证锁定后走 WindowReload 时前端与窗口都已就绪。
+	// 放在托盘之后启动，保证锁定广播事件时前端与窗口都已就绪。
 	a.startAutoLockMonitor()
 }
 
