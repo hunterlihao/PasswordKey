@@ -46,6 +46,14 @@ export function GeneratePassword(arg1) {
   return window['go']['main']['App']['GeneratePassword'](arg1);
 }
 
+export function GetAuditReport() {
+  return window['go']['main']['App']['GetAuditReport']();
+}
+
+export function GetAutoLockMinutes() {
+  return window['go']['main']['App']['GetAutoLockMinutes']();
+}
+
 export function GetCredentialCounts() {
   return window['go']['main']['App']['GetCredentialCounts']();
 }
@@ -92,6 +100,10 @@ export function Lock() {
 
 export function ResetDbPath() {
   return window['go']['main']['App']['ResetDbPath']();
+}
+
+export function SetAutoLockMinutes(arg1) {
+  return window['go']['main']['App']['SetAutoLockMinutes'](arg1);
 }
 
 export function SetupMaster(arg1) {

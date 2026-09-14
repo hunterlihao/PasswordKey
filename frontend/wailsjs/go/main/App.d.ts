@@ -24,6 +24,10 @@ export function ExportSingle(arg1:number,arg2:string):Promise<string>;
 
 export function GeneratePassword(arg1:number):Promise<string>;
 
+export function GetAuditReport():Promise<model.AuditReport>;
+
+export function GetAutoLockMinutes():Promise<number>;
+
 export function GetCredentialCounts():Promise<Record<number, number>>;
 
 export function GetCredentialViewById(arg1:number):Promise<model.CredentialView>;
@@ -47,6 +51,8 @@ export function IsUnlocked():Promise<boolean>;
 export function Lock():Promise<void>;
 
 export function ResetDbPath():Promise<void>;
+
+export function SetAutoLockMinutes(arg1:number):Promise<void>;
 
 export function SetupMaster(arg1:string):Promise<void>;
 
