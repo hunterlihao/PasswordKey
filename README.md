@@ -13,6 +13,8 @@
 - JSON / Excel 导入导出（含模板下载）
 - 修改主密钥（自动重新加密所有凭证）
 - 自定义数据库存储路径（设置中可更改）
+- 关闭窗口最小化到系统托盘，后台常驻；托盘菜单支持显示窗口、立即锁定、退出
+- 单实例运行：重复启动时自动唤回已运行的窗口
 
 ## 技术栈
 
@@ -59,8 +61,10 @@ makensis build/windows/installer/project.nsi
 
 ```
 password/
-├── main.go                         # 程序入口
+├── main.go                         # 程序入口（窗口选项、单实例锁）
 ├── app.go                          # 业务逻辑层
+├── tray.go                         # 系统托盘（Windows）
+├── tray_other.go                   # 非 Windows 平台空实现
 ├── go.mod
 ├── internal/
 │   ├── crypto/
