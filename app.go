@@ -81,11 +81,13 @@ func validateCredential(c *model.Credential) error {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	startupLog("--- startup begin ---")
 
 	// 便携版：数据优先落在 exe 同级的 data/ 子目录，
 	// 目录不可写时自动回退到 %APPDATA%（见 resolveDataDir）。
-	appDataDir, _, err := resolveDataDir()
+	appDataDir, usedDir, err := resolveDataDir()
 	if err != nil {
+		startupLog("resolveDataDir FAILED: %v", err)
 		runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 			Type:    runtime.ErrorDialog,
 			Title:   "启动失败",
@@ -94,8 +96,10 @@ func (a *App) startup(ctx context.Context) {
 		runtime.Quit(ctx)
 		return
 	}
+	startupLog("portable=%s used=%s", appDataDir, usedDir)
 
 	if err := os.MkdirAll(appDataDir, 0700); err != nil {
+		startupLog("MkdirAll FAILED: %v", err)
 		runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 			Type:    runtime.ErrorDialog,
 			Title:   "启动失败",
@@ -108,6 +112,7 @@ func (a *App) startup(ctx context.Context) {
 	a.settingsDir = appDataDir
 	s, err := settings.Load(appDataDir)
 	if err != nil {
+		startupLog("settings.Load FAILED: %v", err)
 		runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 			Type:    runtime.ErrorDialog,
 			Title:   "启动失败",
@@ -123,9 +128,11 @@ func (a *App) startup(ctx context.Context) {
 		dbPath = filepath.Join(appDataDir, "data.db")
 	}
 	a.dbPath = dbPath
+	startupLog("dbPath=%s", dbPath)
 
 	store, err := store.New(dbPath)
 	if err != nil {
+		startupLog("store.New FAILED: %v", err)
 		runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 			Type:    runtime.ErrorDialog,
 			Title:   "启动失败",
@@ -139,10 +146,12 @@ func (a *App) startup(ctx context.Context) {
 	// 托盘放在最后初始化：托盘菜单的「显示主窗口」「立即锁定」都依赖
 	// a.ctx 与 a.store 已经就绪，且需要 Wails 主消息循环已经起来。
 	a.initTray()
+	startupLog("initTray returned")
 
 	// 闲置自动锁定监控：独立协程轮询系统级空闲时长。
 	// 放在托盘之后启动，保证锁定广播事件时前端与窗口都已就绪。
 	a.startAutoLockMonitor()
+	startupLog("--- startup done ---")
 }
 
 func (a *App) shutdown(ctx context.Context) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // exeDirName 便携版数据目录名。放在 exe 同级，整个目录可整体拷到 U 盘运行。
@@ -16,6 +17,44 @@ const dataDirFallback = "system_dir"
 // systemAppDirName 回退时使用的 %APPDATA% 子目录名。
 const systemAppDirName = "PasswordManager"
 
+// startupLog 把启动阶段的关键节点追加到 exe 同级 data/startup.log。
+//
+// 保留理由：托盘点击无反应、单实例抢锁这类问题的成因在运行期无法从外部观测
+// （沙箱里 WebView2 起不来，startup 根本跑不到；真机上又不好挂调试器）。
+// 靠这份日志能一眼看出 startup 走到哪一步、用的是哪个数据目录。
+//
+// 纯诊断辅助：任何写入失败都直接忽略，绝不影响启动。
+func startupLog(format string, args ...any) {
+	dir := portableDataDir()
+	if dir == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "startup.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	fmt.Fprintf(f, "%s  ", time.Now().Format("2006-01-02 15:04:05.000"))
+	fmt.Fprintf(f, format+"\n", args...)
+}
+
+// portableDataDir 解析便携目录路径（exe 同级 data/），不创建目录、不判可写。
+func portableDataDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	// 解析符号链接，避免从快捷方式/链接启动时把 data/ 建到链接所在目录
+	if resolved, evalErr := filepath.EvalSymlinks(exe); evalErr == nil {
+		exe = resolved
+	}
+	return filepath.Join(filepath.Dir(exe), exeDirName)
+}
+
 // resolveDataDir 解析应用数据目录，并保证可写。
 //
 // 便携版优先：exe 同级的 data/ 子目录。若该位置不可写（例如程序装在
@@ -25,16 +64,10 @@ const systemAppDirName = "PasswordManager"
 // 不读取也不迁移任何历史数据：目录为空时由 store 直接建新库。
 // 返回 (便携目录, 实际使用的数据目录)。
 func resolveDataDir() (portableDir string, appDir string, err error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", "", fmt.Errorf("无法定位程序路径: %w", err)
+	portableDir = portableDataDir()
+	if portableDir == "" {
+		return "", "", fmt.Errorf("无法定位程序路径")
 	}
-	// 解析符号链接，避免从快捷方式/链接启动时把 data/ 建到链接所在目录
-	if resolved, evalErr := filepath.EvalSymlinks(exe); evalErr == nil {
-		exe = resolved
-	}
-
-	portableDir = filepath.Join(filepath.Dir(exe), exeDirName)
 
 	// 已有降级标记：不再打扰便携目录
 	if fileExists(filepath.Join(portableDir, dataDirFallback)) {
