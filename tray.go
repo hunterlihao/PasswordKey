@@ -47,7 +47,7 @@ var trayIcon []byte
 // 再调【阻塞式】的 systray.Run()。这样消息泵始终在同一个线程上跑，
 // GetMessage 能稳定收到该线程的消息。
 // （systray 包自己的 init() 里有 runtime.LockOSThread()，但那锁的是 main goroutine
-//   所在的线程，对 nativeStart 新起的 goroutine 没有任何约束力。）
+// 所在的线程，对 nativeStart 新起的 goroutine 没有任何约束力。）
 func (a *App) initTray() {
 	// Wails 的 OnStartup 线程不能让给阻塞的 GetMessage 泵，否则应用卡死；
 	// 所以托盘泵必须另起 goroutine。

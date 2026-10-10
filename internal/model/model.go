@@ -9,12 +9,12 @@ type CredentialType int
 
 const (
 	TypeBrowserPassword CredentialType = iota // 0 - 浏览器密码
-	TypeAPIKey                                 // 1 - API Key
-	TypeSSHKey                                 // 2 - SSH 密钥
-	TypeSecureNote                             // 3 - 安全笔记
-	TypeDatabase                               // 4 - 数据库连接
-	TypeEmail                                  // 5 - 邮箱账号
-	TypeBankCard                               // 6 - 银行卡/信用卡
+	TypeAPIKey                                // 1 - API Key
+	TypeSSHKey                                // 2 - SSH 密钥
+	TypeSecureNote                            // 3 - 安全笔记
+	TypeDatabase                              // 4 - 数据库连接
+	TypeEmail                                 // 5 - 邮箱账号
+	TypeBankCard                              // 6 - 银行卡/信用卡
 )
 
 // Credential 用于数据库存储和前端输入。
@@ -78,9 +78,9 @@ func CheckPasswordStrength(password string) PasswordStrength {
 	// 基于熵估计的强度判定：根据实际使用的字符集大小计算 password 的最大熵
 	// log2(poolSize) * length，再结合长度门槛分级
 	const (
-		entropyWeak   = 40.0  // < 40 bits
-		entropyMedium = 60.0  // 40 ~ 60 bits
-		entropyStrong = 80.0  // >= 80 bits 为强
+		entropyWeak   = 40.0 // < 40 bits
+		entropyMedium = 60.0 // 40 ~ 60 bits
+		entropyStrong = 80.0 // >= 80 bits 为强
 	)
 
 	hasLower, hasUpper, hasDigit, hasSpecialASCII, hasOther := false, false, false, false, false
