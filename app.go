@@ -562,18 +562,44 @@ func (a *App) AddCredential(c model.Credential) error {
 	})
 }
 
-// UpdateCredential 更新凭证
+// UpdateCredential 更新凭证。
+//
+// 两个字段需要「缺省即保留」，因为前端编辑表单并不提供它们的值：
+//
+//   - Secret：编辑表单的密码框恒为空值，占位符写明「留空则不修改」。
+//     若照旧把空字符串加密后写回，就等于用「空密码」覆盖用户已保存的密码
+//     （查看时看不到、复制为空、导出也是空的）。
+//   - IsFavorite：编辑表单没有收藏开关，收藏状态只能由 ToggleFavorite 改变。
+//     表单固定提交 is_favorite=0，直接写回会让「编辑一次就掉收藏」。
+//
+// 因此这里先读回库中现有记录：密码留空时沿用原密文，收藏状态始终保留。
+// 显式传入非空密码时照常重新加密，改密码不受影响。
 func (a *App) UpdateCredential(c model.Credential) error {
 	if err := validateCredential(&c); err != nil {
 		return err
 	}
 
 	return a.withKey(func(key []byte) error {
-		encrypted, err := crypto.Encrypt(key, []byte(c.Secret))
+		existing, err := a.store.GetCredential(c.ID)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return errors.New("凭证不存在")
+			}
 			return err
 		}
-		c.Secret = string(encrypted)
+
+		c.IsFavorite = existing.IsFavorite
+
+		if c.Secret == "" {
+			c.Secret = existing.Secret
+		} else {
+			encrypted, err := crypto.Encrypt(key, []byte(c.Secret))
+			if err != nil {
+				return err
+			}
+			c.Secret = string(encrypted)
+		}
+
 		return a.store.UpdateCredential(&c)
 	})
 }
