@@ -343,7 +343,13 @@ func (a *App) ResetDbPath() error {
 }
 
 // copyDbFiles 复制 SQLite 数据库主文件及配套的 -wal / -shm 文件，
-// 并将副本权限设为 0600（仅所有者可读写），避免密码库副本被同机其他用户读取。
+// 并以 0600 创建副本，避免沿袭父目录可能更宽松的默认权限。
+//
+// 注意 0600 的适用范围：这是 Unix 语义，在 Linux/macOS 上确实限制为仅所有者可读写；
+// 但 Windows 上 Go 只会把其中的「所有者可写」位映射成文件的只读属性，**不设置访问控制列表**，
+// 副本的实际权限仍由目标目录继承的 ACL 决定。
+// 因此这里不宣称「阻止同机其他用户读取」—— 密码库副本的机密性由数据库加密本身保证，
+// 文件权限只是 Unix 平台上的一层额外防护。
 func copyDbFiles(srcPath, dstPath string) error {
 	src, err := os.Open(srcPath)
 	if err != nil {
@@ -351,7 +357,7 @@ func copyDbFiles(srcPath, dstPath string) error {
 	}
 	defer src.Close()
 
-	// 用 0600 创建目标文件，而非默认的 0666
+	// 用 0600 创建目标文件，而非默认的 0666（Windows 上的实际效果见上方说明）
 	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("无法创建目标文件: %w", err)
